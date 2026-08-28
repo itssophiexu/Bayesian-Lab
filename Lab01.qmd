@@ -1,0 +1,84 @@
+---
+title: "Lab 1: R review"
+author: "Sophie Xu"
+format: pdf
+---
+
+```{r include=FALSE}
+library(tidyverse)
+library(tufte)
+library(knitr)
+options(
+  htmltools.dir.version = FALSE, # for blogdown
+  show.signif.stars = FALSE,     # for regression output
+  digits = 2
+)
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+## Objects
+
+1.  Create a code chunk and set the header parameter to TRUE and print out the top rows of the table with `head()` as above.
+
+```{r load_data1}
+data <- read.table(file = 
+          url("http://www2.stat.duke.edu/~pdh10/FCBS/Exercises/azdiabetes.dat"), 
+          header = TRUE)
+
+head(data)
+```
+
+2.  Generate a sequence of $100$ equispaced real numbers from $0$ to $1$ and store it in a variable called `seq2`.
+
+```{r seq}
+seq2 <- seq(from = 0, to = 1, by = 0.01)
+seq2
+```
+
+3.  Sort the entries in `seq3` from greatest to least.
+
+```{r vector functions}
+seq3 <- seq(from = -3, to = 3, by = .5)
+sort(seq3, decreasing = TRUE)
+```
+
+## Matrices
+
+4.  Find the variance of each row of `mat5`
+
+```{r apply}
+# generate large matrix
+mat5 <- matrix(seq(1,100,1), nrow = 4, ncol = 25, byrow = T)
+
+
+# apply(X = object, MARGIN = 1 for rows or 2 for columns, 
+# FUN = function of choice)
+# find variance of each row
+apply(X = mat5, MARGIN = 1, FUN = var)
+```
+
+## Distribution Functions
+
+5.  Generate $500$ samples from a Beta distribution with shape parameter $[a, b] = [0.5, 0.5]$ and store the samples in a variable called `W`
+
+```{r beta}
+W <- rbeta(500, shape1 = 0.5, shape2 = 0.5)
+```
+
+## Plotting
+
+6.  Use code from above to make a few plots of your own.
+
+```{r plot}
+hist(W, 
+     main = "Histogram of W", 
+     xlab = "W", col = "lightblue")
+
+plot(density(W), 
+     main = "Density Plot of W", 
+     xlab = "W")
+
+boxplot(W, 
+        main = "Boxplot of W", 
+        ylab = "W")
+```
