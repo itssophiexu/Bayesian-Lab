@@ -1,0 +1,124 @@
+---
+title: "Lab 3: The Poisson model"
+output:
+  pdf_document:
+    toc: false
+link-citations: yes
+---
+
+```{r include=FALSE}
+library(tidyverse)
+library(tufte)
+library(knitr)
+
+require(tidyverse)
+require(rstanarm)
+require(magrittr)
+require(rstan)
+require(bayesplot)
+require(loo)
+require(readxl)
+
+options(
+  htmltools.dir.version = FALSE, # for blogdown
+  show.signif.stars = FALSE,     # for regression output
+  digits = 2
+  )
+#knitr::opts_chunk$set(eval = FALSE)
+
+ggplot2::theme_set(ggplot2::theme_bw())
+knitr::opts_chunk$set(fig.align = 'center')
+```
+
+**Due:** 11:59 pm on Friday, February 13
+
+## Turning in solutions
+
+This lab is part of Homework 3. Solutions to the exercises, as well as the non-lab homework exercises are to be written up and uploaded to Gradescope as a PDF.
+
+# Getting started
+
+You will need the following R packages. If you do not already have them installed, please do so first using the `install.packages` function.
+
+```{r eval = F}
+require(tidyverse)
+require(rstanarm)
+require(magrittr)
+require(rstan)
+require(bayesplot)
+require(loo)
+require(readxl)
+```
+
+For this lab, you will need two stan files `lab-03-poisson-simple.stan` and `lab-03-poisson-simple.stan`, which you can download here:
+
+- <https://omelikechi.github.io/sta402spring26/labs/lab03/lab-03-poisson-simple.stan>; and
+- <https://omelikechi.github.io/sta402spring26/labs/lab03/lab-03-poisson-hurdle.stan>.
+
+Download both and make sure to save them in the same folder as the R script or R markdown file you are working from.
+
+# The Data
+
+The data we have are counts of deaths per episode of Game of Thrones. Download the data (here: <https://omelikechi.github.io/sta402spring26/labs/lab03/GoT_Deaths.xlsx>) and save it locally to the same directory as your R markdown file. Once you have downloaded the data file into the SAME folder as your R markdown file, load the data by using the following R code.
+
+```{r}
+GoT <- read_xlsx("GoT_Deaths.xlsx", col_names = T)
+head(GoT)
+```
+
+------------------------------------------------------------------------
+
+1.  Plot a histogram of the death counts.
+
+```{r, include=F}
+ggplot(GoT, aes(x = Count))+
+  geom_histogram(bins = 25, fill = "#deebf7") +
+  labs(x = "Number of deaths", y = "Count")
+```
+
+------------------------------------------------------------------------
+
+Because we have count data, it is natural to model the data with a Poisson distribution with parameter $\lambda$. If we take the empirical mean of the data as our estimate for $\lambda$, what does the sampling distribution look like?
+
+```{r}
+y <- GoT$Count
+n <- length(y)
+
+# Finish: obtain empirical mean
+ybar <- mean(y)
+sim_dat <- rpois(n, ybar)
+qplot(sim_dat, bins = 20, xlab = "Simulated number of deaths", fill = I("#9ecae1"))
+
+# create data frame for side-by-side histograms
+df <- rbind(data.frame(y, "observed") %>% rename(count = 1, data = 2),
+            data.frame(sim_dat, "simulated") %>% rename(count = 1, data = 2))
+ggplot(df, aes(x = count, fill = data))+
+  geom_histogram(position = "dodge", bins = 20) +
+  scale_fill_brewer()  +
+  labs(x = "Number of deaths", y = "Count")
+```
+
+Plotting the histogram of the data next to the histogram of the sampled data using $\hat{\lambda} = \bar{y}$, we see that there are many more 0-valued observations in the observed data than there are in the simulated data. We might suspect that the Poisson model will not be a good fit for the data. For now, let's proceed using the Poisson model and see how it behaves.
+
+# Poisson model
+
+We have learned that the Gamma distribution is conjugate for Poisson data. Here, we have chosen the prior $\lambda \sim Gamma(10,2)$ based on prior knowledge that Game of Thrones is a show filled with death. We run the model in Stan. We save the posterior sampled values of $\lambda$ in the variable `lambda_draws`.
+
+```{r basic_mod,cache=T,message=F,warning=F}
+stan_dat <- list(y = y, N = n)
+fit <- stan("lab-03-poisson-simple.stan", data = stan_dat, refresh = 0, chains = 2)
+lambda_draws <- as.matrix(fit, pars = "lambda")
+```
+
+------------------------------------------------------------------------
+
+2.  Use the function `mcmc_areas()` to plot the smoothed posterior distribution for $\lambda$ with a 90% Highest Posterior Density region. Changing the `prob` parameter in `mcmc_areas()` will change the amount of probability mass that is highlighted. The highlighted region will begin in regions of highest density, and will move towards regions of lower density as `prob` gets larger.
+
+```{r eval=F}
+mcmc_areas(lambda_draws, prob = 0.9)
+print(fit, pars = "lambda")
+```
+
+The line in the plot represents the posterior mean, and the shaded area represents 90% of the posterior density. How does the posterior mean for $\lambda$ compare to the sample mean?
+
+------------------------------------------------------------------------

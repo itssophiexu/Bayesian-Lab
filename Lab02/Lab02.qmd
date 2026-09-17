@@ -1,0 +1,162 @@
+---
+title: "lab02"
+author: "Sophie Xu"
+format: pdf
+execute:
+  echo: true
+  output: false
+---
+
+```{r}
+require(tidyverse) 
+require(rstanarm) 
+require(magrittr) 
+require(rstan)
+```
+
+## Repeated Binomial Trials
+
+```{r loaddata}
+tumors <- read.csv(file = "/Users/sophiexu/Bayesian-Lab/Lab02/rats.asc",
+                   skip = 2, header = T, sep = " ")[,c(1,2)] 
+y <- tumors$y
+N <- tumors$N
+n <- length(y)
+```
+
+```{r plot}
+plot(seq(0, 1, length.out = 1000),
+     dbeta(seq(0, 1, length.out = 1000), 1, 1), 
+     type = 'l',
+     xlab = expression(theta), ylab = "Density", 
+     main = "The Beta(1, 1) density")
+```
+
+```{r}
+stan_dat <- list(n = n, N = N, y =y, a = 1, b = 1)
+fit_pool <- stan('lab-02-pool.stan', data = stan_dat, 
+                 chains = 2, refresh = 0) 
+pool_output <- rstan::extract(fit_pool)
+mean(pool_output$theta)
+```
+
+1.  Plot a histogram of θ from the rstan object called pool_output. Describe the distribution.
+
+The distribution is bell-shaped, unimodal, and centered around 0.152. The distribution is barely skewed, and there are no significant outliers.
+
+```{r}
+hist(pool_output$theta,
+     main = expression(paste("Posterior Distribution of ", theta)),
+     xlab = expression(theta))
+```
+
+```{r}
+stan_dat <- list(n = n, N = N, y =y, a = 1, b = 1)
+fit_nopool <- stan('lab-02-nopool.stan', data = stan_dat, 
+                   chains = 2, refresh = 0)
+nopool_output <- rstan::extract(fit_nopool)
+apply(nopool_output$theta,2,mean)
+```
+
+2.  Visualize the posterior distributions of the θi with boxplots. In the plot, there should be one box and whiskers object for each θi. What is actually being plotted here? What does each point represent?
+
+Every group of rats' tumor probability theta are being plotted here as box plots, so there are 71 different thetas. Each point (circles) are outliers for their group.
+
+```{r}
+boxplot(nopool_output$theta,
+        xlab = "Group",
+        ylab = expression(theta[i]),
+        main = expression(paste("Posterior Distributions of ", theta[i])))
+```
+
+3.  Take a few minutes to look at the contents of the two files lab-02-pool.stan and lab-02-nopool.stan. How are they different?
+
+There is only one difference in code, which is the parameter:
+
+the unpooled stan uses "vector\<lower=0, upper=1\> theta;" while the pool stan uses "real\<lower=0, upper=1\> theta;" as parameter. This makes sense—vector suggests that theta is a vector of numbers different for each group while real just means there is one number for theta for all groups.
+
+```{r}
+file.show("lab-02-pool.stan")
+file.show("lab-02-nopool.stan")
+```
+
+## Sensitivity Analysis
+
+```{r}
+par(mfrow = c(4, 4)) 
+par(mar=c(2,2,2,2))
+for(a_val in c(1, 10, 25, 100)){
+  for(b_val in rev(c(1, 10, 25, 100))){ 
+    plot(seq(0, 1, length.out = 1000),
+         dbeta(seq(0, 1, length.out = 1000), a_val, b_val), 
+         type = 'l',
+         xlab = expression(theta), ylab = "Density",
+         main = paste0("Beta(", a_val, ", ", b_val, ")"))
+  }
+}
+output_list <- list()
+for(a_val in c(1, 10, 25, 100)){
+  for(b_val in c(1, 10, 25, 100)){
+    stan_dat <- list(n = n, N = N, y = y, a = a_val, b = b_val)
+    fit_pool <- stan('lab-02-pool.stan', data = stan_dat, 
+                     chains = 2, refresh = 0)
+    output_list[[
+      paste0(
+        "a_", a_val, ":b_", b_val)]] <- rstan::extract(fit_pool)[["theta"]]
+    } 
+}
+```
+
+```{r}
+output_list %>% 
+  plyr::ldply(function(theta){
+  reshape2::melt(theta) %>% 
+      dplyr::mutate(post_mean = mean(theta))
+  }, .id = "prior") %>%
+  tidyr::separate("prior", into = c("a", "b"), sep = ":") %>% 
+  dplyr::mutate(a = as.numeric(gsub("._", "", a)),
+                b = as.numeric(gsub("._", "", b))) %>% ggplot2::ggplot() +
+  geom_density(aes(x = value)) +
+  geom_vline(aes(xintercept = post_mean)) + 
+  facet_grid(a~factor(b, levels = rev(c(1, 10, 25, 100)))) + 
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = expression(theta), y = "Density")
+```
+
+What might be a more intuitive explanation for the posterior’s high sensitivity to the parameter a?
+
+The posterior is sensitive to the parameter a, probably because the observed data has more of parameter b (no-tumor rats). Therefore increasing b would just add more information that confirms the prior, but increasing parameter a would push against the data so changing the data more.
+
+4.  What observable quantity does the parameter a represent about our prior beliefs with respect to these data? What does b represent?
+
+Parameter a represents our prior belief about the number of rats with tumors; parameter b represents out prior belief about the number of rats without tumors.
+
+5.  What do we actually observe in the rat tumor data with respect to these quantities?
+
+We observe 1739 rats total, 267 rats with tumors, and 1472 rate without tumors.
+
+```{r}
+sum(y)        # total tumors
+sum(N - y)    # total rats without tumors
+sum(N)        # total rats
+```
+
+6.  How well do our different prior beliefs – the ones represented by the different parameter settings above – match up with the data?
+
+If we calculate y/N, theta is around 0.15, which is closest to the Beta(10,100) and Beta(25,100). These two match the best, because a / (a+b), the prior mean, are closer to 0.15. They have a larger (a+b), which means they are a stronger prior, and a\<b matches out observed data.
+
+7.  Why might we have observed such a difference between the two approaches when using the prior Beta(1,1)? Consider calculating the MLEs for θ and θi and comparing these values to the values obtained with the Bayesian approach:
+
+This difference is observed not from the Beta(1,1) prior, but mainly from the pool/unpool approach. When we summed the rats together into a large N, the theta is near 0.15 for both MLE and Bayesian approach. When we ungrouped 71 groups, the small N produced difference across groups, as the theta for MLE ranges from \[0.00-0.38\], around the same range for the Bayesian posterior \[0.04-0.38\].ß
+
+```{r}
+# approach 1
+mle.1 <- sum(y)/sum(N)
+# approach 2
+mle.2 <- y/N
+
+mle.1
+mle.2
+mean(pool_output$theta)
+apply(nopool_output$theta,2,mean)
+```

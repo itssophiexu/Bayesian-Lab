@@ -1,0 +1,18 @@
+---
+title: "lab3"
+author: Sophie Xu
+format: pdf
+execute:
+  echo: true
+  output: false
+---
+
+```{r load-packages}
+require(tidyverse) 
+require(rstanarm) 
+require(magrittr) 
+require(rstan) 
+require(bayesplot) 
+require(loo) 
+require(readxl)
+```
