@@ -1,0 +1,138 @@
+---
+title: "Lab 4: Normal-Normal Conjugacy, Posterior Predictive Distribution and Monte Carlo"
+author: Sophie Xu
+format: pdf
+execute:
+  echo: true
+  output: false
+---
+
+```{r include=FALSE}
+library(tidyverse)
+library(tufte)
+library(knitr)
+
+options(
+  htmltools.dir.version = FALSE,
+  show.signif.stars = FALSE,
+  digits = 3
+)
+```
+
+# 1. Normal-normal posterior for coffee-bag fill weights
+
+A coffee-roasting company fills bags labeled as containing 500 grams. An inspector measures the fill weight of 12 bags:
+
+```{r}
+y <- c(503, 498, 501, 505, 499, 502,
+       500, 504, 497, 501, 503, 499)
+
+n <- length(y)
+ybar <- mean(y)
+```
+
+Let $\theta$ be the unknown mean fill weight. Assume
+
+$$
+Y_i\mid\theta\overset{\mathrm{ind}}{\sim}
+\mathcal{N}(\theta,\sigma^2),
+\qquad \sigma=4,
+$$
+
+and
+
+$$
+\theta\sim\mathcal{N}(m_0,\tau_0^2),
+\qquad m_0=500,\qquad \tau_0=6.
+$$
+
+The normal-normal posterior is
+
+$$
+\theta\mid y\sim\mathcal{N}(m_n,v_n),
+$$
+
+where
+
+$$
+v_n=
+\left(\frac{n}{\sigma^2}+\frac{1}{\tau_0^2}\right)^{-1},
+\qquad
+m_n=
+v_n\left(\frac{n\bar y}{\sigma^2}
++\frac{m_0}{\tau_0^2}\right).
+$$
+
+## Exercise 1: Posterior calculations
+
+### Question 1
+
+Calculate $n$ and $\bar y$.
+
+```{r}
+#| output: true
+cat("n =", n)
+cat("ybar =", ybar)
+```
+
+### Question 2
+
+Calculate the data precision, prior precision, posterior precision, $m_n$, and $v_n$.
+
+$$
+\begin{gathered}
+\text{data precision} = \frac{n}{\sigma^2} = \frac{12}{16} = 0.75 \\
+\text{prior precision} = \frac{1}{\tau_0^2} = \frac{1}{36} = 0.0278 \\
+\text{posterior precision} = \frac{n}{\sigma^2} + \frac{1}{\tau_0^2} = 0.7778 \\
+v_n = \left(\frac{n}{\sigma^2}+\frac{1}{\tau_0^2}\right)^{-1} = (0.7778)^{-1} = 1.2857 \\
+\qquad
+m_n = v_n\left(\frac{n\bar y}{\sigma^2}
++\frac{m_0}{\tau_0^2}\right) = 1.2857\left(\frac{12(501)}{16} + \frac{500}{36}\right) = 500.964
+\end{gathered}
+$$
+
+### Question 3
+
+Write the complete posterior distribution of $\theta\mid y$.
+
+$$
+\theta\mid y\sim\mathcal{N}(m_n,v_n) = \mathcal{N}(500.964, 1.2857)
+$$
+
+### Question 4
+
+Calculate the posterior mean, posterior variance, posterior standard deviation, and central 95% credible interval.
+
+$$
+\begin{gathered}
+\text{posterior mean} = m_n = 500.964 \\
+\text{posterior variance} = v_n = 1.2857 \\
+\text{posterior SD} = \sqrt{v_n} = 1.1339
+\end{gathered}
+$$
+
+$$
+\begin{aligned}
+95\% \text{ Credible Interval} &= m_n \pm 1.96\sqrt{v_n} \\
+&= 500.964 \pm 1.96(1.1339) \\
+&= 500.964 \pm 2.2224 \\
+&= (498.742,\ 503.187)
+\end{aligned}
+$$
+
+### Question 5
+
+Calculate
+
+$$
+\begin{aligned}
+\Pr(\theta>502\mid y)
+\end{aligned}
+$$
+
+```{r}
+#| output: true
+set.seed(222)
+theta_sim <- rnorm(100000, mean = 500.964, sd = sqrt(1.2857))
+mean(theta_sim > 502)
+```
