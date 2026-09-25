@@ -1,0 +1,160 @@
+---
+title: "hw quesitons"
+format: html
+---
+
+```{r}
+theta <- seq(0, 1, by = 0.1)
+n <- 100
+k <- 57
+
+probs <- dbinom(k, size = n, prob = theta)
+
+plot(theta, probs, type = "b",
+     xlab = expression(theta), 
+     ylab = expression(Pr(sum(Y[i]) == 57 ~ "|" ~ theta)))
+```
+
+```{r}
+theta <- seq(0, 1, by = 0.1)
+n <- 100
+k <- 57
+
+likelihood <- dbinom(k, size = n, prob = theta)
+posterior <- likelihood / sum(likelihood)
+
+plot(theta, posterior, type = "b",
+          xlab = expression(theta), 
+          ylab = expression(p(theta ~ "|" ~ sum(Y[i]) == 57)))
+
+```
+
+```{r d}
+theta1 <- seq(0, 1, by = 0.001)
+n <- 100
+k <- 57
+prior <- 1     
+likelihood <- dbinom(k, size = n, prob = theta)
+posterior_kernel <- prior * likelihood
+
+plot(theta1, posterior_kernel, type = "l",
+     xlab = expression(theta),
+     ylab = expression(p(theta) ~ Pr(sum(Y[i]) == 57 ~ "|" ~ theta)))
+```
+
+```{r}
+theta <- seq(0,1, by = 0.001)
+
+posterior_density <- dbeta(theta, shape1 = 1 + 57, shape2 = 1 + 100 - 57)
+
+plot(theta, posterior_density, type = "l",
+     xlab = expression(theta),
+     ylab = expression(p(theta ~ "|" ~ sum(Y[i]) == 57)))
+```
+
+```{r}
+set.seed(111)
+S <- 5000
+
+theta1_samples <- rbeta(S, shape1 = 58, shape2 = 44)
+theta2_samples <- rbeta(S, shape1 = 31, shape2 = 21)
+
+prob_theta1_less_theta2 <- mean(theta1_samples < theta2_samples)
+prob_theta1_less_theta2
+```
+
+```{r}
+yA <- c(12,9,12,14,13,13,15,8,15,6)
+yB <- c(11,11,10,9,9,8,7,10,6,8,8,9,7)
+
+nA <- length(yA); sumA <- sum(yA)
+nB <- length(yB); sumB <- sum(yB)
+
+cat("nA", nA, "\n")
+cat("nB", nB, "\n")
+cat("sumA", sumA, "\n")
+cat("sumB", sumB, "\n")
+```
+
+```{r}
+# post A ~ Gamma(237, 20)
+# post B ~ Gamma(125, 14)
+mean_A = 237/20
+mean_B = 125/14
+var_A = 237/(20^2)
+var_B = 125/(14^2)
+cred_A <- qgamma(c(0.025, 0.975), shape = 237, rate = 20)
+cred_B <- qgamma(c(0.025, 0.975), shape = 125, rate = 14)
+cat("mean A:", mean_A, "\n")
+cat("mean B:", mean_B, "\n")
+cat("variance A:", var_A, "\n")
+cat("variance B:", var_B, "\n")
+cat("credible interval A:", cred_A, "\n")
+cat("credible interval B:", cred_B, "\n")
+
+```
+
+```{r}
+n0 <- 1:50
+posterior_mean_B <- (12*n0 + 113) / (n0 + 13)
+plot(n0, posterior_mean_B, type = "l",
+     xlab = expression(n[0]), ylab = expression(E(theta[B] ~ "|" ~ y[B])))
+```
+
+```{r}
+S <- 10000
+priorA <- rgamma(S, shape = 237, rate = 20)
+priorB <- rgamma(S, shape = 125, rate = 14)
+
+probs1 <- mean(priorB < priorA)
+probs1
+```
+
+```{r}
+S <- 10000
+postA <- rgamma(S, shape = 237, rate = 20)
+n0_values <- 1:50
+probs <- numeric(length(n0_values))
+
+for (i in seq_along(n0_values)) {
+  n0 <- n0_values[i]
+  postB <- rgamma(S, shape = 12*n0 + 113, rate = n0 + 13)
+  probs[i] <- mean(postB < postA)
+}
+plot(n0_values, probs, type = "l",
+     xlab = expression(n[0]), ylab = expression(Pr(theta[B] < theta[A])),
+     main = "Pr(theta_B < theta_A) vs n0", ylim = c(0,1))
+```
+
+```{r}
+set.seed(12)
+S <- 10000
+
+post_A <- rgamma(S, shape = 237, rate = 20)
+post_B <- rgamma(S, shape = 12*1 + 113, rate = 1+13)
+
+YA <- rpois(S, lambda = post_A)
+YB <- rpois(S, lambda = post_B)
+
+prob <- mean(YB < YA)
+prob
+```
+
+```{r}
+set.seed(12)
+S <- 10000
+post_A <- rgamma(S, shape = 237, rate = 20)
+YA <- rpois(S, lambda = post_A)
+n0_values <- 1:50
+prob <- numeric(length(n0_values))
+
+for (i in seq_along(n0_values)) {
+  n0 <- n0_values[i]
+  post_B <- rgamma(S, shape = 12*n0 + 113, rate = n0 + 13) 
+  YB <- rpois(S, lambda = post_B)                       
+  prob[i] <- mean(YB < YA)}
+
+plot(n0_values, prob, type = "l",
+     xlab = expression(n[0]), ylab = expression(Pr(Y[B] < Y[A])),
+     ylim = c(0,1))
+```
