@@ -507,6 +507,34 @@ cat("97.5th percentile =", q1[3], "\n")
 Use the predictive draws to estimate the predictive mean, variance, standard deviation, probability above 505 grams, and central 95% predictive interval.
 
 ```{r}
-post_pred <- rnorm(M, mean = m_n, sd = sqrt(v_n + sigma^2))
-mean(post_pred)
+#| output: true
+cat("predictive mean =", mean(y_new_draws), "\n")
+cat("predictive variance =", var(y_new_draws), "\n")
+cat("predictive SD =", sd(y_new_draws), "\n")
+cat("Pr(Ynew > 505) =", mean(y_new_draws > 505), "\n")
+cat("95% predictive interval = (", quantile(y_new_draws, c(0.025, 0.975)), ")")
 ```
+
+### Question 2
+
+To distinguish between estimating $\mathbb{E}[g(\theta)\mid y]$ using posterior draws and estimating $\mathbb{E}[h(\widetilde Y)\mid y]$ using posterior predictive draws, we know $\theta ^{(m)}$ draws only has uncertainly about the unknown mean $\theta$ after seeing the data; $\widetilde Y^{(m)}$ draws carries two layers of uncertainty, including parameter uncertainty and the noise $\epsilon$. So in code, `y_new_draws` uses `theta_draws` as an argument.
+
+## Exercise 7: A general function of a future observation
+
+Define
+
+$$ h(\widetilde y)=\mathbb{I}(\widetilde y>505). $$
+
+### Question 1
+
+Define $h$ in R and calculate the Monte Carlo estimator of
+
+$$ \mathbb{E}[h(\widetilde Y)\mid y]. $$
+
+```{r}
+h <- function(y) y >505
+```
+
+### Question 2
+
+Explain why this Monte Carlo estimator is also an estimate of the posterior predictive probability $\Pr(\widetilde Y>505\mid y)$.
