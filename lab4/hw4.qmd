@@ -1,0 +1,42 @@
+---
+title: "hw4"
+format: html
+---
+
+```{r}
+set.seed(402)
+
+n    <- 16
+ybar <- c(A = 75.2, B = 77.5)
+s    <- c(A = 7.3,  B = 8.1)
+
+mu0  <- 75
+s20  <- 100
+k0s  <- c(1, 2, 4, 8, 16, 32, 64, 128)
+S    <- 10000                        
+
+sample_theta <- function(k0, nu0, ybar, s) {
+  a0 <- nu0 / 2
+  b0 <- nu0 * s20 / 2
+  kn  <- k0 + n
+  mun <- (k0 * mu0 + n * ybar) / kn
+  an  <- a0 + n / 2
+  bn  <- b0 + (n - 1) * s^2 / 2 + (k0 * n / (2 * kn)) * (ybar - mu0)^2
+  
+  sigma2 <- 1 / rgamma(S, shape = an, rate = bn)
+  rnorm(S, mean = mun, sd = sqrt(sigma2 / kn))}
+
+prob <- sapply(k0s, function(k) {
+  thetaA <- sample_theta(k, k, ybar["A"], s["A"])
+  thetaB <- sample_theta(k, k, ybar["B"], s["B"])
+  mean(thetaA < thetaB)})
+
+data.frame(k0_nu0 = k0s, prob = round(prob, 3))
+
+plot(k0s, prob, type = "b", pch = 19, log = "x",
+     ylim = c(0.5, 0.85),
+     xlab = expression(kappa[0] == nu[0]),
+     ylab = expression(Pr(theta[A] < theta[B] ~ "|" ~ y[A], y[B])),
+     main = "Sensitivity of Pr(θA < θB) to prior strength")
+abline(h = 0.5, lty = 2, col = "gray")
+```

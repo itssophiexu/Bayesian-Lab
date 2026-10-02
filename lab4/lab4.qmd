@@ -253,7 +253,7 @@ $$
 mean((theta_draws - 500)^2)
 ```
 
-$\approx 2.201$.
+$= 2.20$.
 
 ### Question 2
 
@@ -532,9 +532,17 @@ Define $h$ in R and calculate the Monte Carlo estimator of
 $$ \mathbb{E}[h(\widetilde Y)\mid y]. $$
 
 ```{r}
+#| output: true
 h <- function(y) y >505
+mean(h(y_new_draws))
 ```
+
+$\mathbb{E}[h(\widetilde Y)\mid y] = 0.159$.
 
 ### Question 2
 
-Explain why this Monte Carlo estimator is also an estimate of the posterior predictive probability $\Pr(\widetilde Y>505\mid y)$.
+Monte Carlo estimator is also an estimate of the posterior predictive probability $\Pr(\widetilde Y>505\mid y)$, because for an indicator function, the expectation is a probability since:
+
+$$
+\mathbb{E}[\mathbb{I}(\widetilde Y>505)\mid y] = 1\cdot\Pr(\widetilde Y>505\mid y) + 0\cdot\Pr(\widetilde Y\leq505\mid y) = \Pr(\widetilde Y>505\mid y).
+$$
