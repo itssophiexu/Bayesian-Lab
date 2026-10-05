@@ -1,0 +1,108 @@
+---
+title: "Lab 4: Normal-Normal Conjugacy, Posterior Predictive Distribution and Monte Carlo"
+author: Sophie Xu
+format: pdf
+execute:
+  echo: true
+  output: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  results = "markup",
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 6.5,
+  fig.height = 4.5,
+  fig.align = "center"
+)
+```
+
+# Part B. Computer analysis in R
+
+**1. Load and inspect the data.**
+
+```{r load-and-inspect}
+library(gapminder)
+
+d <- subset(gapminder, year == 2007)
+d$log_gdp <- log(d$gdpPercap)
+d$x <- d$log_gdp - mean(d$log_gdp)
+
+summary(d[, c("lifeExp", "gdpPercap", "log_gdp")])
+plot(d$log_gdp, d$lifeExp, pch = 19, col = "#2B78A6",
+     xlab = "log(GDP per capita)", ylab = "Life expectancy (years)")
+```
+
+**2. Fit the conjugate model.** The next code block implements the normal--inverse-gamma posterior directly. We use weak but proper priors: $$
+m_0=(65,0)^\mathsf{T},\qquad V_0=\mathrm{diag}(100,100),
+\qquad a_0=2,\qquad b_0=100.
+$$
+
+```{r fit-conjugate-model}
+y <- d$lifeExp
+X <- cbind(1, d$x)
+n <- nrow(X)
+
+m0 <- c(65, 0)
+V0 <- diag(c(100, 100))
+a0 <- 2
+b0 <- 100
+
+Vn <- solve(solve(V0) + crossprod(X))
+mn <- Vn %*% (solve(V0) %*% m0 + crossprod(X, y))
+an <- a0 + n / 2
+bn <- as.numeric(b0 + 0.5 * (
+  crossprod(y) + t(m0) %*% solve(V0) %*% m0 -
+  t(mn) %*% solve(Vn) %*% mn
+))
+
+mn
+c(an = an, bn = bn)
+```
+
+**3. Draw from the joint posterior.** Here, `1/rgamma(...)` gives inverse-gamma draws under the convention used in class.
+
+```{r joint-posterior}
+set.seed(402)
+S <- 10000
+sigma2_draw <- 1 / rgamma(S, shape = an, rate = bn)
+
+R <- chol(Vn)
+beta_draw <- matrix(mn, nrow = S, ncol = 2, byrow = TRUE) +
+  (matrix(rnorm(2 * S), nrow = S, ncol = 2) %*% R) *
+  sqrt(sigma2_draw)
+
+colnames(beta_draw) <- c("intercept", "slope")
+apply(beta_draw, 2, quantile, probs = c(.025, .5, .975))
+mean(beta_draw[, "slope"] > 0)
+```
+
+**4. Posterior and predictive summaries at \$20,000 GDP per capita.**
+
+```{r posterior-and-predictive-summaries}
+g_star <- 20000
+x_star <- log(g_star) - mean(d$log_gdp)
+x_star_vec <- c(1, x_star)
+
+mu_star_draw <- as.vector(beta_draw %*% x_star_vec)
+y_star_draw <- rnorm(S, mean = mu_star_draw, sd = sqrt(sigma2_draw))
+
+quantile(mu_star_draw, c(.025, .5, .975))
+quantile(y_star_draw, c(.025, .5, .975))
+```
+
+# Part C. What should you report?
+
+1.  The 95% credible interval for the slope is (6.32, 8.07). This says that there is a 95% probability that for every 1 unit increase in log GDP per capita, the expected life expectancy increases by 6.32 - 8.07 years.
+2.  Estimate $Pr(\beta_1>0\mid y)$ from the posterior draws. What does this posterior probability summarize?
+
+```{r gtzero}
+mean(beta_draw[, "slope"] > 0)
+```
+
+This posterior probability summarizes how certain we are that the slope is positive, which, in our case, exceeds 0.9999.
+
+1.  Report a 95% credible interval for the conditional mean life expectancy at GDP per capita equal to \$20,000. Then report a 95% predictive interval for one new country's life expectancy at the same GDP level. Why are they different?
+2.  Make a plot of the data with the posterior mean regression line:

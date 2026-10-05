@@ -1,0 +1,223 @@
+---
+output:
+  pdf_document:
+    latex_engine: pdflatex
+    number_sections: false
+fontsize: 11pt
+geometry: margin=0.9in
+header-includes:
+  - \usepackage{amsmath,amssymb,bm}
+  - \usepackage{xcolor}
+  - \definecolor{DukeBlue}{HTML}{143D59}
+  - \definecolor{AccentBlue}{HTML}{2B78A6}
+  - \newcommand{\Normal}{\operatorname{Normal}}
+  - \newcommand{\IG}{\operatorname{Inv\!\text{-}\!Gamma}}
+  - \newcommand{\Prb}{\operatorname{Pr}}
+  - \setlength{\parindent}{0pt}
+  - \setlength{\parskip}{0.5em}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  results = "markup",
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 6.5,
+  fig.height = 4.5,
+  fig.align = "center"
+)
+```
+
+\begin{center}
+{\LARGE\bfseries\color{DukeBlue} STA 402: Bayesian Statistical Modeling}\\[0.35em]
+{\Large Lab: Bayesian Gaussian Regression with Real Data}\\[0.4em]
+\textit{Thursday and Friday lab sections \quad Fall 2026}
+\end{center}
+\vspace{0.3em}\hrule\vspace{0.6em}
+
+**Due Friday, October 9, 2026. No grace period.**
+
+**Submission instructions:** Submit your completed lab on Gradescope as a single PDF. Include your answers to the written questions and your computer analysis. You are highly encouraged to show the output from your R code, including relevant numerical summaries and plots.
+
+**Lab question.** Across countries in 2007, how does life expectancy vary with gross domestic product (GDP) per capita? We will fit a Bayesian Gaussian regression model, summarize posterior uncertainty, make predictions, and inspect places where the model may be too simple.
+
+**Data.** We use the public Gapminder data for 142 countries in 2007. The outcome is life expectancy in years. The predictor is $\log(\text{GDP per capita})$, which puts relative economic differences on a more natural scale than raw GDP.
+
+**AI and learning.** Begin the paper exercise independently and do not open an AI tool until you have made a serious attempt. Afterward, AI can help you interpret an error message or test an idea, but you should be able to explain each model assumption, formula, and conclusion in your own words.
+
+# Part A. Individual paper exercise
+
+For this exercise, define
+$$
+y_i=\text{life expectancy of country }i,\qquad
+x_i=\log(\text{GDP per capita}_i)-\overline{\log(\text{GDP per capita})}.
+$$
+The centered predictor has mean zero. For the 2007 Gapminder data,
+$$
+n=142,\qquad \bar y=67.007,\qquad
+\overline{\log(\text{GDP per capita})}=8.616,
+$$
+$$
+X^\mathsf{T}X=
+\begin{pmatrix}142&0\\0&259.253\end{pmatrix},
+\qquad
+X^\mathsf{T}\bm y=
+\begin{pmatrix}9515.054\\1867.349\end{pmatrix}.
+$$
+
+Use the model
+$$
+y_i\mid\bm\beta,\sigma^2,x_i\overset{\mathrm{ind}}{\sim}
+\Normal(\beta_0+\beta_1x_i,\sigma^2),
+$$
+and the prior
+$$
+\bm\beta\mid\sigma^2\sim\Normal_2(\bm m_0,\sigma^2V_0),\qquad
+\bm m_0=\begin{pmatrix}65\\0\end{pmatrix},\qquad
+V_0=\begin{pmatrix}100&0\\0&100\end{pmatrix}.
+$$
+
+1. In a sentence, interpret $\beta_0$ and $\beta_1$ in this model. Be explicit about the unit for $\beta_1$.
+
+2. Explain why $\beta_0$ is especially easy to interpret after centering the predictor.
+
+3. Calculate
+
+   $$
+   V_n=(V_0^{-1}+X^\mathsf{T}X)^{-1},\qquad
+   \bm m_n=V_n(V_0^{-1}\bm m_0+X^\mathsf{T}\bm y).
+   $$
+
+   You may use a calculator, but show the matrices you invert and multiply.
+
+4. Let $g_\star=\$20{,}000$ and let $x_\star=\log(g_\star)-8.616$. Write the posterior mean of the conditional mean life expectancy at this GDP value, $x_\star^\mathsf{T}\bm m_n$.
+
+5. Explain the difference between a credible interval for $x_\star^\mathsf{T}\bm\beta$ and a predictive interval for a future country with this GDP per capita.
+
+# Part B. Computer analysis in R
+
+**1. Load and inspect the data.** Run the following once if you do not already have the package:
+
+```{r install-gapminder, eval=FALSE}
+install.packages("gapminder")
+```
+
+```{r load-and-inspect}
+library(gapminder)
+
+d <- subset(gapminder, year == 2007)
+d$log_gdp <- log(d$gdpPercap)
+d$x <- d$log_gdp - mean(d$log_gdp)
+
+summary(d[, c("lifeExp", "gdpPercap", "log_gdp")])
+plot(d$log_gdp, d$lifeExp, pch = 19, col = "#2B78A6",
+     xlab = "log(GDP per capita)", ylab = "Life expectancy (years)")
+```
+
+**2. Fit the conjugate model.** The next code block implements the normal--inverse-gamma posterior directly. We use weak but proper priors:
+$$
+\bm m_0=(65,0)^\mathsf{T},\qquad V_0=\mathrm{diag}(100,100),
+\qquad a_0=2,\qquad b_0=100.
+$$
+
+```{r fit-conjugate-model}
+y <- d$lifeExp
+X <- cbind(1, d$x)
+n <- nrow(X)
+
+m0 <- c(65, 0)
+V0 <- diag(c(100, 100))
+a0 <- 2
+b0 <- 100
+
+Vn <- solve(solve(V0) + crossprod(X))
+mn <- Vn %*% (solve(V0) %*% m0 + crossprod(X, y))
+an <- a0 + n / 2
+bn <- as.numeric(b0 + 0.5 * (
+  crossprod(y) + t(m0) %*% solve(V0) %*% m0 -
+  t(mn) %*% solve(Vn) %*% mn
+))
+
+mn
+c(an = an, bn = bn)
+```
+
+**3. Draw from the joint posterior.** Here, `1/rgamma(...)` gives inverse-gamma draws under the convention used in class.
+
+```{r joint-posterior}
+set.seed(402)
+S <- 10000
+sigma2_draw <- 1 / rgamma(S, shape = an, rate = bn)
+
+R <- chol(Vn)
+beta_draw <- matrix(mn, nrow = S, ncol = 2, byrow = TRUE) +
+  (matrix(rnorm(2 * S), nrow = S, ncol = 2) %*% R) *
+  sqrt(sigma2_draw)
+
+colnames(beta_draw) <- c("intercept", "slope")
+apply(beta_draw, 2, quantile, probs = c(.025, .5, .975))
+mean(beta_draw[, "slope"] > 0)
+```
+
+**4. Posterior and predictive summaries at \$20,000 GDP per capita.**
+
+```{r posterior-and-predictive-summaries}
+g_star <- 20000
+x_star <- log(g_star) - mean(d$log_gdp)
+x_star_vec <- c(1, x_star)
+
+mu_star_draw <- as.vector(beta_draw %*% x_star_vec)
+y_star_draw <- rnorm(S, mean = mu_star_draw, sd = sqrt(sigma2_draw))
+
+quantile(mu_star_draw, c(.025, .5, .975))
+quantile(y_star_draw, c(.025, .5, .975))
+```
+
+# Part C. What should you report?
+
+Work with your group to answer the following.
+
+1. Report a 95% credible interval for the slope. In words, what does it say about the fitted relationship between log GDP per capita and life expectancy?
+
+2. Estimate $\Prb(\beta_1>0\mid\bm y)$ from the posterior draws. What does this posterior probability summarize?
+
+3. Report a 95% credible interval for the conditional mean life expectancy at GDP per capita equal to \$20,000. Then report a 95% predictive interval for one new country's life expectancy at the same GDP level. Why are they different?
+
+4. Make a plot of the data with the posterior mean regression line:
+
+```{r posterior-mean-regression-line}
+plot(d$log_gdp, y, pch = 19, col = "#2B78A6",
+     xlab = "log(GDP per capita)", ylab = "Life expectancy (years)")
+xx <- seq(min(d$log_gdp), max(d$log_gdp), length.out = 150)
+lines(xx, mn[1] + mn[2] * (xx - mean(d$log_gdp)),
+      lwd = 3, col = "#143D59")
+```
+
+# Part D. Diagnostics and model limitations
+
+1. Make a residual-versus-fitted plot and a normal Q--Q plot:
+
+```{r diagnostic-plots}
+fitted_mean <- as.vector(X %*% mn)
+resid <- y - fitted_mean
+
+plot(fitted_mean, resid, pch = 19, col = "#2B78A6",
+     xlab = "Fitted mean life expectancy", ylab = "Residual")
+abline(h = 0, lty = 2)
+qqnorm(resid, pch = 19, col = "#2B78A6")
+qqline(resid, col = "#143D59", lwd = 2)
+```
+
+2. Identify one or two features of the data that make a single Gaussian line imperfect. Consider curvature, unequal residual spread, and countries far from the main trend.
+
+3. Fit the same model using *raw* GDP per capita instead of log GDP per capita. Compare its scatterplot and residual plot with the log-GDP version. Which predictor scale seems more appropriate here, and why?
+
+4. Add a quadratic term in centered log GDP or include continent indicators. What scientific pattern might this richer model capture that the simple line misses?
+
+\vfill
+\hrule
+\vspace{0.5em}
+\small
+
+**Data source.** Gapminder 2007 country-level data, distributed in the `gapminder` R package. Original source: Gapminder Foundation. See also Hoff, *A First Course in Bayesian Statistical Methods*, Chapter 9.
