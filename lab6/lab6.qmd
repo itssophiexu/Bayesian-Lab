@@ -1,5 +1,5 @@
 ---
-title: "Lab 4: Normal-Normal Conjugacy, Posterior Predictive Distribution and Monte Carlo"
+title: "Lab 6"
 author: Sophie Xu
 format: pdf
 execute:
@@ -104,5 +104,64 @@ mean(beta_draw[, "slope"] > 0)
 
 This posterior probability summarizes how certain we are that the slope is positive, which, in our case, exceeds 0.9999.
 
-1.  Report a 95% credible interval for the conditional mean life expectancy at GDP per capita equal to \$20,000. Then report a 95% predictive interval for one new country's life expectancy at the same GDP level. Why are they different?
-2.  Make a plot of the data with the posterior mean regression line:
+3.  The 95% credible interval for the conditional mean life expectancy at GDP per capita equal to \$20,000 is the 2.5th and 97.5th quantiles in the part 4 code block from above.
+
+For the conditional mean, it is (74.7, 77.9); for a new country, it is (61.9, 90.9). They are different because the credible interval for the mean is the average life expectancy of all countries with the uncertainty in $\beta$, but the predictive interval is for one specific country, which includes the uncertainty in $\beta$ and the uncertainty for an individual country.
+
+4.  Make a plot of the data with the posterior mean regression line:
+
+```{r posterior-mean-regression-line}
+plot(d$log_gdp, y, pch = 19, col = "#2B78A6",
+     xlab = "log(GDP per capita)", ylab = "Life expectancy (years)")
+xx <- seq(min(d$log_gdp), max(d$log_gdp), length.out = 150)
+lines(xx, mn[1] + mn[2] * (xx - mean(d$log_gdp)),
+      lwd = 3, col = "#143D59")
+```
+
+This posterior mean line captures an overall upward positive trend.
+
+# Part D. Diagnostics and model limitations
+
+1.  Make a residual-versus-fitted plot and a normal Q--Q plot:
+
+```{r diagnostic-plots}
+fitted_mean <- as.vector(X %*% mn)
+resid <- y - fitted_mean
+
+plot(fitted_mean, resid, pch = 19, col = "#2B78A6",
+     xlab = "Fitted mean life expectancy", ylab = "Residual")
+abline(h = 0, lty = 2)
+qqnorm(resid, pch = 19, col = "#2B78A6")
+qqline(resid, col = "#143D59", lwd = 2)
+```
+
+2.  Identify one or two features of the data that make a single Gaussian line imperfect. Consider curvature, unequal residual spread, and countries far from the main trend.
+
+Feature 1: There is a cluster of countries that sit below the line at log GDP, which is also shown in the QQ plot where the lower tail bends far below the line, so the residuals are left-skewed, not normal.
+
+Feature 2: The residual spread is also not constant. The residuals for countries with fitted values above 75 are within +- 5 years. Therefore, the variance overstates the uncertainty for wealthy countries.
+
+3.  Fit the same model using *raw* GDP per capita instead of log GDP per capita. Compare its scatterplot and residual plot with the log-GDP version. Which predictor scale seems more appropriate here, and why?
+
+```{r}
+d$g <- d$gdpPercap - mean(d$gdpPercap)
+X2 <- cbind(1, d$g)
+
+Vn2 <- solve(solve(V0) + crossprod(X2))
+mn2 <- Vn2 %*% (solve(V0) %*% m0 + crossprod(X2, y))
+mn2
+
+plot(d$gdpPercap, y, pch = 19, col = "#2B78A6",
+     xlab = "GDP per capita", ylab = "Life expectancy (years)")
+gg <- seq(min(d$gdpPercap), max(d$gdpPercap), length.out = 150)
+lines(gg, mn2[1] + mn2[2] * (gg - mean(d$gdpPercap)), lwd = 3, col = "#143D59")
+
+resid2 <- y - as.vector(X2 %*% mn2)
+plot(as.vector(X2 %*% mn2), resid2, pch = 19, col = "#2B78A6",
+     xlab = "Fitted mean life expectancy", ylab = "Residual")
+abline(h = 0, lty = 2)
+```
+
+The slope is 6.37 x 10\^(-4). The scatterplot is strongly curved, with most countries bunched on the left. The points do not match the linear line. The raw residual plot also has a strong arch, with a minor inverted U-shape. Therefore, the log-GDP model would be more appropriate because it spreads the countries more evenly, gives a roughly linear relationship, and the residuals show no obvious pattern.
+
+4.  Add a quadratic term in centered log GDP or include continent indicators. What scientific pattern might this richer model capture that the simple line misses?
