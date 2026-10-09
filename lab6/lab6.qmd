@@ -165,3 +165,20 @@ abline(h = 0, lty = 2)
 The slope is 6.37 x 10\^(-4). The scatterplot is strongly curved, with most countries bunched on the left. The points do not match the linear line. The raw residual plot also has a strong arch, with a minor inverted U-shape. Therefore, the log-GDP model would be more appropriate because it spreads the countries more evenly, gives a roughly linear relationship, and the residuals show no obvious pattern.
 
 4.  Add a quadratic term in centered log GDP or include continent indicators. What scientific pattern might this richer model capture that the simple line misses?
+
+```{r}
+X3 <- cbind(1, d$x, d$x^2)
+m0_3 <- c(65, 0, 0)
+V0_3 <- diag(100, 3)
+
+Vn3 <- solve(solve(V0_3) + crossprod(X3))
+mn3 <- Vn3 %*% (solve(V0_3) %*% m0_3 + crossprod(X3, y))
+mn3
+
+plot(d$log_gdp, y, pch = 19, col = "#2B78A6",
+     xlab = "log(GDP per capita)", ylab = "Life expectancy (years)")
+lines(xx, mn3[1] + mn3[2] * (xx - mean(d$log_gdp)) + mn3[3] * (xx - mean(d$log_gdp))^2,
+      lwd = 3, col = "#143D59")
+```
+
+Adding a quadratic term gives posterior means $\beta_0 = 67.88$, $\beta_1 = 7.11$, $\beta_2 = -0.48$.
