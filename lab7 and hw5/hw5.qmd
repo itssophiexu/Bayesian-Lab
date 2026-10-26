@@ -1,0 +1,190 @@
+---
+title: "hw5 part 2"
+author: Sophie Xu
+format: pdf
+execute:
+  echo: true
+---
+
+#### 3. Log Posterior Function
+
+```{r}
+x <- c(-1.162, -0.563, -0.091, 0.388, 0.867, 1.389, 1.860, 2.562) 
+n <- c(603, 1330, 2011, 1556, 646, 289, 145, 61)
+z <- c(221, 637, 916, 675, 228, 48, 5, 0)
+```
+
+```{r}
+log_post <- function(beta, x, n, z) {
+  p <- plogis(beta[1] + beta[2] * x)
+  loglik <- sum(dbinom(z, size = n, prob = p, log = TRUE))
+  logprior <- dnorm(beta[1], mean = 0, sd = 2.5, log = TRUE) +
+              dnorm(beta[2], mean = 0, sd = 2.5, log = TRUE)
+  loglik + logprior
+}
+```
+
+```{r}
+log_post(c(0, 0), x, n, z)
+log_post(c(-0.35, -0.37), x, n, z)
+log_post(c(5, 5), x, n, z)
+```
+
+The log posterior is highest at c(-0.35, -0.37), which makes sense, since beta_0 = -0.35 means the probability is around 0.41 at a 3.8hr transit and declines as transit time increases.
+
+c(0,0) just means p = 0.5 for every bin which is lower, while c(5,5) means predicting almost p = 1 in every bin therefore extremely low.
+
+#### 4. Sampler
+
+```{r}
+metropolis <- function(n.iter, prop.sd, x, n, z, beta.init = c(0, 0)) {
+  samples <- matrix(NA, nrow = n.iter, ncol = 2)
+  colnames(samples) <- c("beta0", "beta1")
+  
+  beta.current <- beta.init
+  n.accept <- 0
+  
+  for (t in 1:n.iter) {
+    beta.proposed <- beta.current + rnorm(2, 0, prop.sd)
+    
+    log.alpha <- log_post(beta.proposed, x, n, z) - 
+      log_post(beta.current, x, n, z)
+    
+    if (log(runif(1)) < min(0, log.alpha)) {
+      beta.current <- beta.proposed
+      n.accept <- n.accept + 1
+    }
+    
+    samples[t, ] <- beta.current
+  }
+  
+  list(samples = samples, accept.rate = n.accept / n.iter)
+}
+
+set.seed(402)
+fit <- metropolis(n.iter = 30000, prop.sd = 0.04, x = x, n = n, z = z)
+fit$accept.rate
+```
+
+```{r, fig.height=7}
+par(mfrow = c(2, 1))
+plot(fit$samples[, "beta0"], type = "l", xlab = "Iteration", 
+     ylab = expression(beta[0]),
+     main = "Trace plot: beta0")
+plot(fit$samples[, "beta1"], type = "l", xlab = "Iteration", 
+     ylab = expression(beta[1]),
+     main = "Trace plot: beta1")
+par(mfrow = c(1, 1))
+
+```
+
+I started with the prompt prop.sd = 0.04. It gave an acceptance rate of 0.447 and well trace plo9ts so no adjustments were needed.
+
+#### 5. Two starting values.
+
+```{r}
+fit2 <- metropolis(n.iter = 30000, prop.sd = 0.04, x = x, n = n, z = z,
+                   beta.init = c(1, -1))
+fit2$accept.rate
+```
+
+```{r, fig.height=8}
+par(mfrow = c(2, 1))
+
+# beta0
+plot(fit$samples[, "beta0"], type = "l", col = "steelblue",
+     ylim = range(fit$samples[, "beta0"], fit2$samples[, "beta0"]),
+     xlab = "Iteration", ylab = expression(beta[0]), 
+     main = "Trace plot: beta0")
+lines(fit2$samples[, "beta0"], col = "tomato")
+legend("topright", legend = c("start (0, 0)", "start (1, -1)"),
+       col = c("steelblue", "tomato"), lty = 1, bty = "n")
+
+# beta1
+plot(fit$samples[, "beta1"], type = "l", col = "steelblue",
+     ylim = range(fit$samples[, "beta1"], fit2$samples[, "beta1"]),
+     xlab = "Iteration", ylab = expression(beta[1]), 
+     main = "Trace plot: beta1")
+lines(fit2$samples[, "beta1"], col = "tomato")
+legend("bottomright", legend = c("start (0, 0)", "start (1, -1)"),
+       col = c("steelblue", "tomato"), lty = 1, bty = "n")
+
+par(mfrow = c(1, 1))
+```
+
+Yes. Both chains move to the same regions within the first few hundred iterations. This is because both have converged to the posterior, and where they started is not important.
+
+#### 6. Retained draws.
+
+```{r}
+warmup <- 1000
+draws <- fit$samples[-(1:warmup), ]
+nrow(draws)
+```
+
+I chose a warm up of 1000 iterations to be conservative since both chains seems to be stable after a few hundred iterations. And I keep the remaining 29000 draws for the rest of the analysis.
+
+## Part 3: Posterior summaries and prediction
+
+#### 7. Posterior summaries
+
+```{r}
+colMeans(draws)
+apply(draws, 2, quantile, probs = c(0.025, 0.975))
+```
+
+The posterior mean of $\beta_0$ is -0.35 with a 95% credible interval (−0.40, −0.30).
+
+The posterior mean of $\beta_1$ is -0.39 with a 95% credible interval (−0.46, −0.32).
+
+```{r}
+mean(draws[, "beta1"] < 0)
+```
+
+All 29,000 retained draws have $\beta_1 < 0$, so $P(\beta_1 < 0 \mid z, n, x) \approx 1$. This means that we are very certain that Kepler candidates with longer transit duration (more negative slope) are less likely to be confirmed as planets.
+
+#### 8. A probability curve
+
+```{r}
+x.grid <- seq(min(x), max(x), length.out = 200)
+
+# rows = draws, columns = grid values
+p.draws <- plogis(outer(draws[, "beta0"], rep(1, length(x.grid))) +
+                    outer(draws[, "beta1"], x.grid))
+
+p.mean  <- colMeans(p.draws)
+p.lower <- apply(p.draws, 2, quantile, probs = 0.025)
+p.upper <- apply(p.draws, 2, quantile, probs = 0.975)
+```
+
+```{r}
+plot(x, z / n, pch = 19, ylim = c(0, 0.6),
+     xlab = "x = mean log(duration / 3.8)", ylab = "Probability confirmed",
+     main = "Observed proportions and fitted logistic curve")
+polygon(c(x.grid, rev(x.grid)), c(p.lower, rev(p.upper)),
+        col = adjustcolor("steelblue", alpha.f = 0.3), border = NA)
+lines(x.grid, p.mean, col = "steelblue", lwd = 2)
+points(x, z / n, pch = 19)
+legend("topright", legend = c("Observed z/n", "Posterior mean", "95% band"),
+       pch = c(19, NA, 15), lty = c(NA, 1, NA),
+       col = c("black", "steelblue", 
+               adjustcolor("steelblue", alpha.f = 0.3)), bty = "n")
+```
+
+This simple logitic curve does not describe the binned data adequately. There are only two bins that fall in the 95% band. The curve does capture a downward trend, which is valid, but badly over predicts for the last three bins and the first bin.
+
+#### 9. Prediction for a new candidate
+
+$x^* = \log\left(\frac{5}{3.8}\right) = \log(1.3158) \approx 0.274$
+
+```{r}
+x.star <- log(5 / 3.8)
+p.star <- plogis(draws[, "beta0"] + draws[, "beta1"] * x.star)
+
+mean(p.star)
+quantile(p.star, probs = c(0.025, 0.975))
+```
+
+The posterior mean is 0.39, with a 95% credible interval (0.376, 0.402).
+
+This intervals says that, given the data and this model, there is a 95% posterior probability that the confirmation probility for candidates with a 5 hour transit lies between 0.38 and 0.40. It does not say whether this particular candidate will be confirmed since the outcome is still very uncertain with a \~39% chance.

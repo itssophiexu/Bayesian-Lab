@@ -1,0 +1,367 @@
+---
+title: "Homework 5: Random-Walk Metropolis Sampling"
+author: "Ella Wan"
+output: pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## Question 1
+
+The independent binomial likelihood is $$
+L(\beta_0,\beta_1)
+=
+\prod_{j=1}^{8}
+\binom{n_j}{z_j}
+p_j^{z_j}(1-p_j)^{n_j-z_j},
+\qquad
+p_j=\frac{e^{\beta_0+\beta_1x_j}}
+{1+e^{\beta_0+\beta_1x_j}}.
+$$
+
+Up to an additive constant, the log likelihood is $$
+\begin{aligned}
+\ell(\beta_0,\beta_1)
+&=
+\sum_{j=1}^{8}
+\left[z_j\log p_j+(n_j-z_j)\log(1-p_j)\right]\\
+&=
+\sum_{j=1}^{8}
+\left[
+z_j(\beta_0+\beta_1x_j)
+-n_j\log\left(1+e^{\beta_0+\beta_1x_j}\right)
+\right].
+\end{aligned}
+$$
+
+The independent normal priors give $$
+\log p(\beta_0)+\log p(\beta_1)
+=
+-\frac{\beta_0^2}{2(2.5^2)}
+-\frac{\beta_1^2}{2(2.5^2)}
++C.
+$$
+
+Adding the log likelihood and log priors gives $$
+\boxed{
+\begin{aligned}
+\log\tilde p(\beta_0,\beta_1\mid z,n,x)
+={}&
+\sum_{j=1}^{8}
+\left[
+z_j(\beta_0+\beta_1x_j)
+-n_j\log\left(1+e^{\beta_0+\beta_1x_j}\right)
+\right]\\
+&-\frac{\beta_0^2+\beta_1^2}{12.5},
+\end{aligned}
+}
+$$ up to an additive constant.
+
+## Question 2
+
+For the symmetric normal random-walk proposal, the acceptance probability is $$
+\alpha
+=
+\min\left\{
+1,
+\frac{\tilde p(\boldsymbol{\beta}^{\star}\mid z,n,x)}
+{\tilde p(\boldsymbol{\beta}^{(t)}\mid z,n,x)}
+\right\}.
+$$
+
+Equivalently, $$
+\log\alpha
+=
+\min\left\{
+0,
+\log\tilde p(\boldsymbol{\beta}^{\star}\mid z,n,x)
+-
+\log\tilde p(\boldsymbol{\beta}^{(t)}\mid z,n,x)
+\right\}.
+$$
+
+The posterior normalizing constant cancels because it is the same at both states. The proposal-density terms cancel because the proposal is symmetric.
+
+## Question 3
+
+```{r}
+x <- c(-1.162, -0.563, -0.091, 0.388,
+       0.867, 1.389, 1.860, 2.562)
+n <- c(603, 1330, 2011, 1556, 646, 289, 145, 61)
+z <- c(221, 637, 916, 675, 228, 48, 5, 0)
+
+log_post <- function(beta, x, n, z) {
+  p <- plogis(beta[1] + beta[2] * x)
+  sum(dbinom(z, size = n, prob = p, log = TRUE)) +
+    sum(dnorm(beta, mean = 0, sd = 2.5, log = TRUE))
+}
+
+checks <- data.frame(
+  beta0 = c(0, -0.35, 5),
+  beta1 = c(0, -0.37, 5)
+)
+
+checks$log_posterior <- apply(
+  checks[, c("beta0", "beta1")],
+  1,
+  log_post,
+  x = x,
+  n = n,
+  z = z
+)
+
+knitr::kable(checks, digits = 4)
+```
+
+The log posterior values are approximately $-291.07$, $-126.01$, and $-18731.68$, respectively. The largest occurs at $(-0.35,-0.37)$. This makes sense because it predicts confirmation probabilities below 0.5 that decrease with duration. In contrast, $(0,0)$ predicts 0.5 in every bin, while $(5,5)$ predicts probabilities close to one in most bins.
+
+## Question 4
+
+```{r}
+rw_metropolis <- function(x, n, z, iterations = 30000,
+                          prop.sd = 0.04,
+                          start = c(0, 0)) {
+  beta.current <- start
+  log.current <- log_post(beta.current, x, n, z)
+
+  draws <- matrix(
+    NA_real_,
+    nrow = iterations,
+    ncol = 2,
+    dimnames = list(NULL, c("beta0", "beta1"))
+  )
+
+  accepted <- 0L
+
+  for (t in seq_len(iterations)) {
+    beta.proposed <- beta.current + rnorm(2, 0, prop.sd)
+    log.proposed <- log_post(beta.proposed, x, n, z)
+    log.alpha <- log.proposed - log.current
+
+    if (log(runif(1)) < min(0, log.alpha)) {
+      beta.current <- beta.proposed
+      log.current <- log.proposed
+      accepted <- accepted + 1L
+    }
+
+    draws[t, ] <- beta.current
+  }
+
+  list(
+    draws = draws,
+    acceptance_rate = accepted / iterations
+  )
+}
+
+set.seed(402)
+
+prop.sd <- 0.04
+
+run1 <- rw_metropolis(
+  x, n, z,
+  iterations = 30000,
+  prop.sd = prop.sd,
+  start = c(0, 0)
+)
+
+run1$acceptance_rate
+
+par(mfrow = c(2, 1), mar = c(4, 4, 2, 1))
+
+plot(
+  run1$draws[, "beta0"],
+  type = "l",
+  xlab = "Iteration",
+  ylab = expression(beta[0]),
+  main = "Trace plot for beta0"
+)
+
+plot(
+  run1$draws[, "beta1"],
+  type = "l",
+  xlab = "Iteration",
+  ylab = expression(beta[1]),
+  main = "Trace plot for beta1"
+)
+
+par(mfrow = c(1, 1))
+```
+
+I used 30,000 iterations with a proposal standard deviation of 0.04. The acceptance rate was approximately 44.68%. Both traces settle quickly and continue fluctuating without an obvious long-term trend, so I kept the proposal scale at 0.04.
+
+## Question 5
+
+```{r}
+run2 <- rw_metropolis(
+  x, n, z,
+  iterations = 30000,
+  prop.sd = prop.sd,
+  start = c(1, -1)
+)
+
+run2$acceptance_rate
+
+par(mfrow = c(2, 1), mar = c(4, 4, 2, 1))
+
+for (k in 1:2) {
+  matplot(
+    cbind(run1$draws[, k], run2$draws[, k]),
+    type = "l",
+    lty = 1,
+    col = c("steelblue", "darkorange"),
+    xlab = "Iteration",
+    ylab = colnames(run1$draws)[k],
+    main = paste("Two chains:", colnames(run1$draws)[k])
+  )
+
+  legend(
+    "topright",
+    legend = c("Start: (0, 0)", "Start: (1, -1)"),
+    col = c("steelblue", "darkorange"),
+    lty = 1,
+    bty = "n"
+  )
+}
+
+par(mfrow = c(1, 1))
+```
+
+Both chains appear to explore the same region after the first few hundred iterations. Their traces overlap and fluctuate around similar values despite the different starting points. This supports that the later draws are not strongly affected by the starting values.
+
+## Question 6
+
+```{r}
+warmup <- 1000
+
+retained <- run1$draws[
+  seq.int(warmup + 1, nrow(run1$draws)),
+  ,
+  drop = FALSE
+]
+
+nrow(retained)
+```
+
+I discarded the first 1,000 iterations because both chains appear to settle within the first few hundred iterations. I retained all remaining 29,000 draws from the first chain without thinning.
+
+## Question 7
+
+```{r}
+coefficient_summary <- data.frame(
+  coefficient = colnames(retained),
+  posterior_mean = colMeans(retained),
+  lower_95 = apply(retained, 2, quantile, probs = 0.025),
+  upper_95 = apply(retained, 2, quantile, probs = 0.975),
+  row.names = NULL
+)
+
+knitr::kable(coefficient_summary, digits = 4)
+
+prob_negative <- mean(retained[, "beta1"] < 0)
+
+prob_negative
+```
+
+The posterior mean of $\beta_0$ is $-0.3464$, with a central 95% credible interval of $(-0.3960,-0.2963)$. The posterior mean of $\beta_1$ is $-0.3894$, with a central 95% credible interval of $(-0.4615,-0.3176)$.
+
+All 29,000 retained slope draws are negative, giving $$
+\widehat{P}(\beta_1<0\mid z,n,x)=1.
+$$
+
+This provides strong posterior support that candidates with longer transit durations have lower confirmation probabilities under this model. The Monte Carlo estimate of 1 does not mean the exact posterior probability must equal 1.
+
+## Question 8
+
+```{r}
+x_grid <- seq(min(x), max(x), length.out = 200)
+
+p_grid <- plogis(
+  outer(retained[, "beta0"], rep(1, length(x_grid))) +
+    outer(retained[, "beta1"], x_grid)
+)
+
+p_mean <- colMeans(p_grid)
+p_lower <- apply(p_grid, 2, quantile, probs = 0.025)
+p_upper <- apply(p_grid, 2, quantile, probs = 0.975)
+
+plot(
+  x,
+  z / n,
+  type = "n",
+  ylim = c(0, 0.6),
+  xlab = "Mean log(transit duration / 3.8)",
+  ylab = "Confirmation probability",
+  main = "Observed proportions and fitted probability"
+)
+
+polygon(
+  c(x_grid, rev(x_grid)),
+  c(p_lower, rev(p_upper)),
+  col = adjustcolor("steelblue", alpha.f = 0.3),
+  border = NA
+)
+
+lines(x_grid, p_mean, col = "steelblue", lwd = 2)
+points(x, z / n, pch = 19)
+
+legend(
+  "topright",
+  legend = c(
+    "Observed proportions",
+    "Posterior mean",
+    "Pointwise 95% credible band"
+  ),
+  pch = c(19, NA, 15),
+  lty = c(NA, 1, NA),
+  col = c(
+    "black",
+    "steelblue",
+    adjustcolor("steelblue", alpha.f = 0.3)
+  ),
+  bty = "n"
+)
+```
+
+The logistic curve captures the overall decline but does not describe the binned pattern well. It overestimates confirmation proportions in the first bin and the three longest-duration bins, while missing the higher proportions in several middle bins. The credible band reflects uncertainty about the fitted probabilities; it is not a predictive band for observed proportions.
+
+## Question 9
+
+For a candidate with a 5-hour transit duration, $$
+x^\star=\log(5/3.8)\approx 0.2744.
+$$
+
+For each retained draw, $$
+p_\star^{(s)}
+=
+\operatorname{logit}^{-1}
+\left(\beta_0^{(s)}+\beta_1^{(s)}x^\star\right).
+$$
+
+```{r}
+x_star <- log(5 / 3.8)
+
+p_star <- plogis(
+  retained[, "beta0"] +
+    retained[, "beta1"] * x_star
+)
+
+prediction_summary <- data.frame(
+  posterior_mean = mean(p_star),
+  lower_95 = unname(quantile(p_star, 0.025)),
+  upper_95 = unname(quantile(p_star, 0.975))
+)
+
+knitr::kable(prediction_summary, digits = 4)
+```
+
+The posterior mean confirmation probability is 0.3886, with a central 95% credible interval of $(0.3761,0.4015)$.
+
+Given the data and this model, the interval contains 95% of the posterior probability for the confirmation probability of a 5-hour candidate. It does not determine whether an individual candidate will be confirmed; its outcome is either confirmed or false positive.

@@ -181,4 +181,4 @@ lines(xx, mn3[1] + mn3[2] * (xx - mean(d$log_gdp)) + mn3[3] * (xx - mean(d$log_g
       lwd = 3, col = "#143D59")
 ```
 
-Adding a quadratic term gives posterior means $\beta_0 = 67.88$, $\beta_1 = 7.11$, $\beta_2 = -0.48$.
+Adding a quadratic term gives posterior means $\beta_0 = 67.88$, $\beta_1 = 7.11$, $\beta_2 = -0.48$. The negative quadratic coefficient means the relationship is concave. This captures diminishing returns to income that the simple line misses. For poor countries, extra income buys large gains such as basic healthcare, sanitation, and nutrition, while wealthy countries are already near a biological ceiling of around 80 years, so further income adds less. The simple line uses a single slope of 7.2 everywhere, which underpredicts middle-income countries and overpredicts the richest ones.
