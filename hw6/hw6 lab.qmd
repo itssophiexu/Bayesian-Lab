@@ -1,0 +1,242 @@
+---
+title: "HW 6 Lab Part"
+author: Sophie Xu
+format: pdf
+execute:
+  echo: true
+---
+
+# Lab: From MCMC Draws to Replicated Weaving Experiments
+
+## Part A. What experiment are we replicating?
+
+3.  Run the supplied MCMC section. Inspect traces for all chains and an autocorrelation plot. Do they appear to explore the same region?
+
+```{r lab-mcmc, eval=FALSE}
+# STA 402: NONCONJUGATE Poisson model, Normal prior on log rate eta.
+# Students complete posterior-predictive generation and statistic choices.
+# Run sections in order. Base R only. No package installation required.
+set.seed(402155)
+d <- datasets::warpbreaks
+# Offline fallback: d <- read.csv("warpbreaks.csv")
+y <- d$breaks
+group <- interaction(d$wool,d$tension,drop=TRUE)
+n <- length(y)
+# SUPPLIED: posterior density is on eta, not on lambda.
+log_posterior <- function(eta,y) {
+ if(!is.finite(eta)) return(-Inf)
+ sum(y)*eta-length(y)*exp(eta)-0.5*(eta-log(20))^2
+}
+# SUPPLIED: symmetric random-walk Metropolis. Keep rejections.
+metropolis <- function(y,start,step=0.08,n_iter=14000,warmup=4000) {
+ current<-start;current_lp<-log_posterior(current,y)
+ draws<-numeric(n_iter);accepted<-logical(n_iter)
+ for(t in seq_len(n_iter)) {
+  candidate<-rnorm(1,current,step)
+  candidate_lp<-log_posterior(candidate,y)
+  if(is.finite(candidate_lp) &&
+     log(runif(1)) <= min(0,candidate_lp-current_lp)) {
+   current<-candidate;current_lp<-candidate_lp;accepted[t]<-TRUE
+  }
+  draws[t]<-current
+ }
+ keep<-seq.int(warmup+1,n_iter)
+ list(full=draws,retained=draws[keep],acceptance=mean(accepted[keep]))
+}
+starts<-log(c(10,20,40,60))
+chains<-lapply(starts,function(start)metropolis(y,start))
+par(mfrow=c(2,2))
+for(j in seq_along(chains)) {
+ plot(chains[[j]]$full,type="l",xlab="Iteration",ylab="Log rate eta",
+      main=paste("Chain",j));abline(v=4000,lty=2,col="red3")
+}
+par(mfrow=c(1,1))
+print(sapply(chains,function(ch)c(mean=mean(ch$retained),
+                                acceptance=ch$acceptance)))
+acf(chains[[1]]$retained,main="Retained log-rate autocorrelation")
+# Pool only after inspecting chain agreement and retained behavior.
+eta_draws<-unlist(lapply(chains,function(ch)ch$retained))
+print(quantile(exp(eta_draws),c(.025,.5,.975)))
+```
+
+## Part B. One draw makes one complete dataset
+
+4.  Choose one retained index $s$, set $\eta^{(s)}=\texttt{eta\_draws[s]}$, and calculate $\lambda^{(s)}=e^{\eta^{(s)}}$. Write down this rate.
+
+```{r lab-one-rate, eval=FALSE}
+# Part B. TODO 1: select ONE retained eta and generate ONE full dataset.
+s <- 1
+eta_one <- eta_draws[s]
+lambda_one <- exp(eta_one)
+eta_one
+lambda_one
+```
+
+5.  Generate *54* independent Poisson counts using that one rate. Store the resulting vector as `yrep_one`. Verify its length. Draw a histogram beside the histogram of the observed counts, using the same bins and axes. The two datasets need not match observation by observation.
+
+```{r lab-one-dataset, eval=FALSE}
+yrep_one <- rpois(n, lambda_one)
+stopifnot(length(yrep_one) == n)
+length(yrep_one)
+
+
+bins <- seq(0, max(c(y, yrep_one)) + 5, by = 5)
+ymax <- max(hist(y, breaks = bins, plot = FALSE)$counts,
+            hist(yrep_one, breaks = bins, plot = FALSE)$counts)
+
+par(mfrow = c(1, 2))
+hist(y, breaks = bins, ylim = c(0, ymax), col = "grey70",
+     main = "Observed counts", xlab = "Breaks")
+hist(yrep_one, breaks = bins, ylim = c(0, ymax), col = "steelblue",
+     main = paste0("replicated (lambda = ", round(lambda_one, 1), ")"),
+     xlab = "Breaks")
+par(mfrow = c(1, 1))
+```
+
+6.  Generate a second complete dataset using the *same* rate. Explain why it differs from the first. Then use another retained parameter draw to generate a third dataset. Identify the two sources of variation involved in these operations.
+
+```{r lab-additional-datasets, eval=FALSE}
+yrep_two <- rpois(n, lambda_one)
+
+s2 <- 40000
+lambda_three <- exp(eta_draws[s2])
+yrep_three <- rpois(n, lambda_three)
+
+lambda_one
+lambda_three
+head(yrep_one); head(yrep_two); head(yrep_three)
+```
+
+The second dataset differs from the first because each count is a random Poisson draw, even when they have the same lambda rate. This is a sampling variation.
+
+However, the third dataset is different from the first two because it uses a different retained draw, which gives a different lambda. There is parameter uncertainty together with the sampling variation.
+
+7.  A classmate draws a new rate from the posterior separately for each of the 54 counts. Does that generate the joint predictive experiment specified above? Explain why or why not.
+
+No, the classmate's method does not generate the joint predictive experiment specified above, because drawing 54 different rates means every loom has its own rate, not a shared rate.
+
+## Part C. Many posterior draws make many datasets
+
+Use $S=2000$ randomly selected retained indices, as provided in the starter. Selecting indices does not make the original MCMC samples independent. It lets us spread the replicated experiments across the retained output.
+
+8.  Fill a matrix `Yrep` using a loop. For row $s$, select its single log-rate draw, exponentiate it, and generate all 54 counts using that rate. Do not use 54 unrelated rates within a row.
+
+```{r lab-replicate-loop, eval=FALSE}
+# Part C. TODO 2: generate S COMPLETE datasets yourself.
+S <- 2000L
+selected_indices <- sample.int(length(eta_draws), S, replace = FALSE)
+eta_selected <- eta_draws[selected_indices]
+Yrep <- matrix(NA_integer_, nrow = S, ncol = n)
+
+for (s in seq_len(S)) {
+  lambda_s <- exp(eta_selected[s])     # ONE rate for this row
+  Yrep[s, ] <- rpois(n, lambda_s)      # all 54 counts from that rate
+}
+
+dim(Yrep)
+Yrep[1, ]
+head(Yrep[, 1], 10)
+```
+
+9.  Give the dimensions / length and what each object represents: `eta_draws`, `eta_selected[s]`, `Yrep[s, ]`, `Yrep[, i]`, and `Yrep`.
+
+`eta_draws`: vector length 40000, all retained posterior draws of the log rate $\eta$
+
+`eta_selected[s]`: number length 1. It is one posterior draw of $\eta$, the s-th of the 2000 randomly selected retained draws.
+
+`Yrep[s, ]`: vector length 54. It is one complete replicated experiment with one rate.
+
+`Yrep[ ,i]`: vector length 2000. Loom i's count across all 2000 replicated experiments, each from a different posterior rate.
+
+`Yrep`: matrix, with dimension 2000x54. It is all replicated experiments stacked, where the rows are datasets and the columns are looms. It is a Monte Carlo sample from the joint posterior predictive distribution.
+
+10. Display the observed histogram and five randomly chosen replicated histograms in a 2-by-3 layout,
+    using common axes and bins. What repeated patterns do you see? Which differences seem
+    systematic rather than ordinary differences between random datasets?
+
+```{r lab-six-dataset-display, eval=FALSE}
+# SUPPLIED display helper. Run AFTER filling Yrep.
+show_six <- function(y,Yrep) {
+ chosen<-sample.int(nrow(Yrep),5)
+ bins<-pretty(range(c(y,Yrep)),n=12)
+ all_counts<-rbind(y,Yrep[chosen,,drop=FALSE])
+ ymax<-max(apply(all_counts,1,function(z)
+                   max(hist(z,breaks=bins,plot=FALSE)$counts)))
+ old<-par(mfrow=c(2,3));on.exit(par(old))
+ for(j in seq_len(6)) {
+  hist(all_counts[j,],breaks=bins,xlim=range(bins),ylim=c(0,ymax),
+       col="lightblue",main=if(j==1)"Observed" else paste("Replicate",j-1),
+       xlab="Breaks per fixed yarn length")
+ }
+}
+show_six(y,Yrep)
+```
+
+There are repeated patterns in the replicates. All 5 of them look very similar; the differences come from the ordinary random variation between the datasets.
+
+The observed data has a similar center, but is much more spread out compared to the replicates. This spread suggests that the Poisson model (with variance = mean) cannot produce data as variable as the real counts.
+
+## Part D. A check turns each dataset into one number
+
+**Choose before calculating.** Based on the data and model assumptions, select two statistics. Choose one that measures spread or extreme counts and one that measures differences between groups. The sample mean will be a supplied comparison, not one of your two choices.
+
+| Feature                   | Possible statistic                         |
+|---------------------------|--------------------------------------------|
+| Spread                    | Sample variance or $s_y^2/\bar y$          |
+| Large counts              | Maximum or fraction of counts exceeding 50 |
+| Between-group differences | Largest minus smallest group mean          |
+| Within-group spread       | Average of the six ratios $s_g^2/\bar y_g$ |
+
+For a ratio with all-zero counts, define its contribution as zero. Other defensible choices are welcome. Explain the relevant assumption and why unusually high or low values would be informative. Your choices are exploratory because you have seen the observations.
+
+I choose spread and between-group differences. For spread, I assume that the variance equals its mean. For the between-group differences, I assume that the range should be small.
+
+11. Write one R function for each statistic. Apply the *same function* to the observed vector and separately to every row of `Yrep`. Explain why applying it to columns would answer a different question.
+
+```{r lab-statistics, eval=FALSE}
+# Part D. TODO 3: write TWO scalar-valued discrepancy functions.
+# Each function must take ONE complete dataset vector of length 54.
+T_spread <- function(z) {
+  if (mean(z) == 0) return(0)        # all-zero dataset: define as 0
+  var(z) / mean(z)                   # dispersion ratio s^2 / ybar
+}
+T_group <- function(z) {
+  group_means <- tapply(z, group, mean)   # 6 wool x tension means
+  max(group_means) - min(group_means)     # range of group means
+}
+
+# TODO 4: compute observed statistics and one statistic PER ROW of Yrep.
+observed_spread   <- T_spread(y)
+replicated_spread <- apply(Yrep, 1, T_spread)
+observed_group    <- T_group(y)
+replicated_group  <- apply(Yrep, 1, T_group)
+
+observed_mean   <- mean(y)
+replicated_mean <- apply(Yrep, 1, mean)
+
+observed_spread; summary(replicated_spread)
+observed_group;  summary(replicated_group)
+observed_mean;   summary(replicated_mean)
+```
+
+I looked at rows, not columns, because each row of Yrep is one complete replicated experiment, while columns are the loom's count across different experiments. Applying the statistic to a column is measuring looms, not experiments.
+
+12. For each statistic, plot its 2,000 replicated values and add a vertical line at its observed value. Include the observed line in your plotting range. Report the observed value, the central 95% replicated range, and the fraction satisfying $T(\mathbf y^{\mathrm{rep}})\ge T(\mathbf y)$.
+
+```{r lab-check-plots, eval=FALSE}
+# SUPPLIED display and numeric-summary helper.
+check_plot <- function(observed,replicated,title) {
+ stopifnot(length(observed)==1,all(is.finite(replicated)))
+ hist(replicated,breaks=30,xlim=range(c(observed,replicated)),
+      col="lightblue",main=title,xlab="Statistic for one complete dataset")
+ abline(v=observed,col="red3",lwd=3)
+ legend("topright","Observed",col="red3",lwd=3,bty="n")
+ c(observed=observed,lower=unname(quantile(replicated,.025)),
+   upper=unname(quantile(replicated,.975)),
+   exceedances=sum(replicated>=observed),
+   total=length(replicated),tail=mean(replicated>=observed))
+}
+check_plot(observed_spread,replicated_spread,"Spread")
+check_plot(observed_group,replicated_group,"Between-group")
+check_plot(mean(y),apply(Yrep,1,mean),"Mean check")
+```

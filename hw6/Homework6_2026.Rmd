@@ -1,0 +1,327 @@
+---
+title: "STA 402: Homework and Lab"
+subtitle: "Homework 6: Posterior Predictive Checks"
+date: |
+  Due: Monday, October 26, 2026, at 11:59 p.m.  
+  12-hour grace period ends Tuesday, October 27, at noon.
+output: pdf_document
+fontsize: 11pt
+geometry: margin=0.85in
+---
+
+# Homework: From Metropolis Draws to Predictive Checks
+
+**Purpose.** Reinforce the lab's pipeline using a different nonconjugate model: posterior parameter draws, complete replicated experiments, statistic selection and interpretation. Core questions require no new programming and should take about 60--90 minutes.
+
+**Submission.** Submit the homework and lab together as one PDF report with the completed R Markdown source. Credit is for a complete, thoughtful attempt showing your reasoning. Begin independently before using AI to resolve a specific barrier, and be prepared to explain any assistance.
+
+## A seed-germination teaching example
+
+These deliberately constructed counts represent germinated seeds in 12 trays containing 10 seeds each. This is a teaching dataset, not a collected experiment:
+
+$$
+\mathbf z=(0,1,1,2,2,3,7,8,9,9,10,10),\qquad \sum_jz_j=62.
+$$
+
+The displayed order does not represent time. The common-probability model is
+
+$$
+Z_j\mid\alpha\overset{\mathrm{ind}}\sim\operatorname{Binomial}(10,p),\quad
+p=\operatorname{logit}^{-1}(\alpha)=\frac{e^\alpha}{1+e^\alpha},\quad
+\alpha\sim\operatorname{Normal}(0,1.5^2).
+$$
+
+This normal prior on the log odds gives a nonconjugate posterior.
+
+## 1. From the model to Metropolis output
+
+(a) Derive the log posterior kernel $\ell(\alpha)$. Your answer should depend on the total successes, total trials, and normal prior. What assumptions allow the likelihood to depend on the tray counts only through their sum?
+
+(b) A symmetric random-walk Metropolis sampler is at $\alpha=0$ and proposes $\alpha^\star=0.2$. Calculate the log posterior difference and acceptance probability. You may use $\log 2=0.693147$ and $\log(1+e^{0.2})=0.798139$. If the uniform draw is $u=0.85$, what is the next recorded state? What if $u=0.40$?
+
+(c) Explain how you obtain posterior draws of $p$ from retained draws of $\alpha$. Is $\operatorname{logit}^{-1}(\mathbb{E}[\alpha\mid\mathbf z])$ generally equal to $\mathbb{E}[p\mid\mathbf z]$?
+
+## 2. Parameter uncertainty and a future tray
+
+For this fitted posterior, numerical integration gives approximately
+
+$$
+\mathbb{E}(p\mid\mathbf z)=0.516421,\quad\operatorname{Var}(p\mid\mathbf z)=0.002034,
+\quad\mathbb{E}[p(1-p)\mid\mathbf z]=0.247697.
+$$
+
+(a) Write $\operatorname{Pr}(Z_{\mathrm{new}}=k\mid\mathbf z)$ as an integral over $\alpha$. Explain how to estimate it with retained MCMC draws without evaluating a posterior normalizing constant.
+
+(b) Use total expectation and total variance to calculate $\mathbb{E}(Z_{\mathrm{new}}\mid\mathbf z)$ and $\operatorname{Var}(Z_{\mathrm{new}}\mid\mathbf z)$ for a tray containing 10 seeds. Identify the contribution from binomial sampling variation and the contribution from uncertainty about $p$.
+
+(c) Explain the difference between a credible interval for $p$ and a predictive interval for $Z_{\mathrm{new}}$, including their units.
+
+## 3. Replicating a whole experiment
+
+Two students propose these procedures for row $s$ of a replicated-data matrix:
+
+**Algorithm A:** Select one retained $\alpha^{(s)}$, set $p^{(s)}=\operatorname{logit}^{-1}(\alpha^{(s)})$, and generate all 12 tray counts independently from $\operatorname{Binomial}(10,p^{(s)})$.
+
+**Algorithm B:** Select a different retained $\alpha_j^{(s)}$ separately for each tray, then generate its count using the corresponding $p_j^{(s)}$.
+
+For comparing the joint predictive distributions, treat the parameter selections as independent draws from the fitted posterior. Correlation in finite MCMC output is an additional computational issue.
+
+(a) Which procedure matches the fitted model? Explain why both procedures can have the same marginal predictive distribution for each tray while giving different distributions for a complete experiment.
+
+(b) Under Algorithm A, show that for $j\ne k$,
+
+$$
+\operatorname{Cov}(Z_j^{\mathrm{rep}},Z_k^{\mathrm{rep}}\mid\mathbf z)=100\operatorname{Var}(p\mid\mathbf z).
+$$
+
+What is the covariance under Algorithm B? Describe the source of dependence under A.
+
+(c) If `Zrep` contains 2,000 replicated experiments as rows, give its dimensions and explain `Zrep[7, ]` and `Zrep[, 7]`. Which direction should you use to compute one sample variance per experiment?
+
+## 4. Choosing and interpreting checks
+
+The observed statistics below are $T_{\mathrm{total}}=62$, $T_{\mathrm{var}}=15.788$, and $T_{\mathrm{extreme}}=7$, where
+
+$$
+T_{\mathrm{total}}=\sum_jz_j,\quad T_{\mathrm{var}}=\frac1{11}\sum_j(z_j-\bar z)^2,
+\quad T_{\mathrm{extreme}}=\sum_j\mathrm I\{z_j\le1\text{ or }z_j\ge9\}.
+$$
+
+Twelve replicated datasets from Algorithm A produced:
+
+| Replication | Total | Variance | Extreme trays |
+|------------:|------:|---------:|--------------:|
+|           1 |    54 |    5.909 |             1 |
+|           2 |    62 |    3.424 |             0 |
+|           3 |    59 |    3.720 |             0 |
+|           4 |    54 |    2.455 |             0 |
+|           5 |    58 |    1.970 |             0 |
+|           6 |    53 |    1.356 |             0 |
+|           7 |    55 |    3.356 |             1 |
+|           8 |    60 |    1.818 |             0 |
+|           9 |    76 |    2.970 |             1 |
+|          10 |    71 |    1.720 |             0 |
+|          11 |    64 |    2.970 |             0 |
+|          12 |    64 |    3.515 |             0 |
+
+(a) For each statistic, state the feature it measures and a model limitation it might reveal. Which would you prioritize for these data, and why?
+
+(b) Calculate all three upper-tail diagnostic estimates using the convention $T(\mathbf Z^{\mathrm{rep}})\ge T(\mathbf z)$. Include ties. Explain why an apparently reasonable total does not guarantee adequate tray-to-tray variation.
+
+(c) Critique: "The variance diagnostic is zero, so the model has zero probability of being true." Explain the Monte Carlo limitation of 12 replications and the distinction between a diagnostic tail area and a model probability.
+
+(d) Suggest a model that allows genuine differences in germination probability across trays. Explain how to generate a complete replicated experiment under that model. You need not fit it. Why is uncertainty about a single common $p$ not the same thing as genuine tray heterogeneity?
+
+(e) Explain why excellent MCMC diagnostics do not replace these checks, and why the displayed tray order cannot justify a conclusion about temporal dependence.
+
+**Optional computation.** Run Metropolis for this normal-log-odds model and generate 5,000 complete replicated experiments yourself. Recalculate the three diagnostic distributions. More simulations improve numerical precision, while the fitted model stays the same.
+
+# Lab: From MCMC Draws to Replicated Weaving Experiments
+
+**The question.** A textile manufacturer wants to understand how often yarn breaks during weaving. Can one common-rate Poisson model reproduce the patterns in a new weaving experiment, including unusually variable outcomes and differences between operating conditions?
+
+**Data.** R's built-in `warpbreaks` has 54 break counts, each for a fixed length of yarn on one loom. Two wool types (A, B) and three tension levels (L, M, H) form six groups, with nine observations per group. We will treat the counts as conditionally independent for this exercise. No installation or download is needed. The local CSV is a fallback.
+
+**Today's focus.** You will run supplied random-walk Metropolis code, then construct the replicated datasets yourself. The main task is connecting posterior parameter draws to simulated observations and then to diagnostic statistics. A parameter draw, a dataset, and a statistic are different objects.
+
+**Submission.** Include the object dimensions and interpretations, six-dataset display, your statistic choices, two final check plots and conclusion. About 3--4 report pages is enough. Credit is for a complete, thoughtful attempt with interpretation. Begin each reasoning task independently before using AI to help with a specific barrier, and be ready to explain any assisted work.
+
+## The model and supplied MCMC
+
+$$
+Y_i\mid\eta\overset{\mathrm{iid}}\sim\operatorname{Poisson}(e^\eta),\quad i=1,\ldots,54,
+\qquad \eta\sim\operatorname{Normal}(\log 20,1^2).
+$$
+
+The prior is normal on the *log rate*; the rate is $\lambda=e^\eta$. This is a nonconjugate model. The prior median rate is 20, not its mean. The log posterior, up to an additive constant, is
+
+$$
+\ell(\eta)=\eta\sum_i y_i-54e^\eta-\tfrac12(\eta-\log20)^2.
+$$
+
+The provided sampler proposes $\eta^\star=\eta+\epsilon$ with $\epsilon\sim\operatorname{Normal}(0,0.08^2)$, uses the usual symmetric Metropolis rule, and records repeated states after rejection. Run four chains of 14,000 iterations, discarding the first 4,000 of each after inspecting traces. The script produces `eta_draws`: the 40,000 retained log-rate states, pooled after checking chain agreement. They remain correlated within chains.
+
+## Part A. What experiment are we replicating? (0--15 minutes)
+
+1.  Describe one observation and one complete dataset. Why should each replicated experiment contain 54 counts with the original group labels?
+
+2.  Before running the check, identify one assumption about the counts and one about the six groups imposed by a common-rate model.
+
+3.  Run the supplied MCMC section. Inspect traces for all chains and an autocorrelation plot. Do they appear to explore the same region? If not, ask the TA before proceeding. Briefly distinguish this computational assessment from assessing whether Poisson counts describe the experiment well.
+
+```{r lab-mcmc, eval=FALSE}
+# STA 402: NONCONJUGATE Poisson model, Normal prior on log rate eta.
+# Students complete posterior-predictive generation and statistic choices.
+# Run sections in order. Base R only. No package installation required.
+set.seed(402155)
+d <- datasets::warpbreaks
+# Offline fallback: d <- read.csv("warpbreaks.csv")
+y <- d$breaks
+group <- interaction(d$wool,d$tension,drop=TRUE)
+n <- length(y)
+# SUPPLIED: posterior density is on eta, not on lambda.
+log_posterior <- function(eta,y) {
+ if(!is.finite(eta)) return(-Inf)
+ sum(y)*eta-length(y)*exp(eta)-0.5*(eta-log(20))^2
+}
+# SUPPLIED: symmetric random-walk Metropolis. Keep rejections.
+metropolis <- function(y,start,step=0.08,n_iter=14000,warmup=4000) {
+ current<-start;current_lp<-log_posterior(current,y)
+ draws<-numeric(n_iter);accepted<-logical(n_iter)
+ for(t in seq_len(n_iter)) {
+  candidate<-rnorm(1,current,step)
+  candidate_lp<-log_posterior(candidate,y)
+  if(is.finite(candidate_lp) &&
+     log(runif(1)) <= min(0,candidate_lp-current_lp)) {
+   current<-candidate;current_lp<-candidate_lp;accepted[t]<-TRUE
+  }
+  draws[t]<-current
+ }
+ keep<-seq.int(warmup+1,n_iter)
+ list(full=draws,retained=draws[keep],acceptance=mean(accepted[keep]))
+}
+starts<-log(c(10,20,40,60))
+chains<-lapply(starts,function(start)metropolis(y,start))
+par(mfrow=c(2,2))
+for(j in seq_along(chains)) {
+ plot(chains[[j]]$full,type="l",xlab="Iteration",ylab="Log rate eta",
+      main=paste("Chain",j));abline(v=4000,lty=2,col="red3")
+}
+par(mfrow=c(1,1))
+print(sapply(chains,function(ch)c(mean=mean(ch$retained),
+                                acceptance=ch$acceptance)))
+acf(chains[[1]]$retained,main="Retained log-rate autocorrelation")
+# Pool only after inspecting chain agreement and retained behavior.
+eta_draws<-unlist(lapply(chains,function(ch)ch$retained))
+print(quantile(exp(eta_draws),c(.025,.5,.975)))
+```
+
+## Part B. One draw makes one complete dataset (15--30 min)
+
+4.  Choose one retained index $s$, set $\eta^{(s)}=\texttt{eta\_draws[s]}$, and calculate $\lambda^{(s)}=e^{\eta^{(s)}}$. Write down this rate.
+
+```{r lab-one-rate, eval=FALSE}
+# Part B. TODO 1: select ONE retained eta and generate ONE full dataset.
+# eta_one <- ...
+# lambda_one <- ...
+```
+
+5.  Generate *54* independent Poisson counts using that one rate. Store the resulting vector as `yrep_one`. Verify its length. Draw a histogram beside the histogram of the observed counts, using the same bins and axes. The two datasets need not match observation by observation.
+
+```{r lab-one-dataset, eval=FALSE}
+# yrep_one <- ...   # a vector with n=54 counts, using ONE rate
+# stopifnot(length(yrep_one)==n)
+```
+
+6.  Generate a second complete dataset using the *same* rate. Explain why it differs from the first. Then use another retained parameter draw to generate a third dataset. Identify the two sources of variation involved in these operations.
+
+```{r lab-additional-datasets, eval=FALSE}
+# Make a second replicate at the same rate, then one at another eta.
+```
+
+7.  A classmate draws a new rate from the posterior separately for each of the 54 counts. Does that generate the joint predictive experiment specified above? Explain why or why not.
+
+## Part C. Many posterior draws make many datasets (30--45 minutes)
+
+Use $S=2000$ randomly selected retained indices, as provided in the starter. Selecting indices does not make the original MCMC samples independent. It lets us spread the replicated experiments across the retained output.
+
+8.  Fill a matrix `Yrep` using a loop. For row $s$, select its single log-rate draw, exponentiate it, and generate all 54 counts using that rate. Do not use 54 unrelated rates within a row.
+
+```{r lab-replicate-loop, eval=FALSE}
+# Part C. TODO 2: generate S COMPLETE datasets yourself.
+S<-2000L
+selected_indices<-sample.int(length(eta_draws),S,replace=FALSE)
+eta_selected<-eta_draws[selected_indices]
+Yrep<-matrix(NA_integer_,nrow=S,ncol=n)
+# for(s in seq_len(S)) {
+#   lambda_s <- ...
+#   Yrep[s,] <- ...
+# }
+# Inspect dim(Yrep), Yrep[1,] and Yrep[,1].
+```
+
+9.  Give the dimensions / length and what each object represents: `eta_draws`, `eta_selected[s]`, `Yrep[s, ]`, `Yrep[, i]`, and `Yrep`.
+
+10. Display the observed histogram and five randomly chosen replicated histograms in a 2-by-3 layout, using common axes and bins. What repeated patterns do you see? Which differences seem systematic rather than ordinary differences between random datasets?
+
+```{r lab-six-dataset-display, eval=FALSE}
+# SUPPLIED display helper. Run AFTER filling Yrep.
+show_six <- function(y,Yrep) {
+ chosen<-sample.int(nrow(Yrep),5)
+ bins<-pretty(range(c(y,Yrep)),n=12)
+ all_counts<-rbind(y,Yrep[chosen,,drop=FALSE])
+ ymax<-max(apply(all_counts,1,function(z)
+                   max(hist(z,breaks=bins,plot=FALSE)$counts)))
+ old<-par(mfrow=c(2,3));on.exit(par(old))
+ for(j in seq_len(6)) {
+  hist(all_counts[j,],breaks=bins,xlim=range(bins),ylim=c(0,ymax),
+       col="lightblue",main=if(j==1)"Observed" else paste("Replicate",j-1),
+       xlab="Breaks per fixed yarn length")
+ }
+}
+# show_six(y,Yrep)
+```
+
+## Part D. A check turns each dataset into one number (45--65 min)
+
+**Choose before calculating.** Based on the data and model assumptions, select two statistics. Choose one that measures spread or extreme counts and one that measures differences between groups. The sample mean will be a supplied comparison, not one of your two choices.
+
+| Feature                   | Possible statistic                         |
+|:--------------------------|:-------------------------------------------|
+| Spread                    | Sample variance or $s_y^2/\bar y$          |
+| Large counts              | Maximum or fraction of counts exceeding 50 |
+| Between-group differences | Largest minus smallest group mean          |
+| Within-group spread       | Average of the six ratios $s_g^2/\bar y_g$ |
+
+For a ratio with all-zero counts, define its contribution as zero. Other defensible choices are welcome. Explain the relevant assumption and why unusually high or low values would be informative. Your choices are exploratory because you have seen the observations.
+
+11. Write one R function for each statistic. Apply the *same function* to the observed vector and separately to every row of `Yrep`. Explain why applying it to columns would answer a different question.
+
+```{r lab-statistics, eval=FALSE}
+# Part D. TODO 3: write TWO scalar-valued discrepancy functions.
+# Each function must take ONE complete dataset vector of length 54.
+T_spread <- function(z) {
+ stop("Choose a spread or extreme-count statistic and implement it")
+}
+T_group <- function(z) {
+ stop("Choose a group-comparison statistic and implement it")
+}
+# TODO 4: compute observed statistics and one statistic PER ROW of Yrep.
+# observed_spread <- ...
+# replicated_spread <- ...
+# observed_group <- ...
+# replicated_group <- ...
+# Also check the mean: mean(y), apply(Yrep, 1, mean).
+```
+
+12. For each statistic, plot its 2,000 replicated values and add a vertical line at its observed value. Include the observed line in your plotting range. Report the observed value, the central 95% replicated range, and the fraction satisfying $T(\mathbf y^{\mathrm{rep}})\ge T(\mathbf y)$.
+
+```{r lab-check-plots, eval=FALSE}
+# SUPPLIED display and numeric-summary helper.
+check_plot <- function(observed,replicated,title) {
+ stopifnot(length(observed)==1,all(is.finite(replicated)))
+ hist(replicated,breaks=30,xlim=range(c(observed,replicated)),
+      col="lightblue",main=title,xlab="Statistic for one complete dataset")
+ abline(v=observed,col="red3",lwd=3)
+ legend("topright","Observed",col="red3",lwd=3,bty="n")
+ c(observed=observed,lower=unname(quantile(replicated,.025)),
+   upper=unname(quantile(replicated,.975)),
+   exceedances=sum(replicated>=observed),
+   total=length(replicated),tail=mean(replicated>=observed))
+}
+# check_plot(observed_spread,replicated_spread,"Your spread check")
+# check_plot(observed_group,replicated_group,"Your group check")
+# check_plot(mean(y),apply(Yrep,1,mean),"Mean check")
+```
+
+13. Use the same process for the mean. Does the mean check tell the same story as your chosen statistics? Explain why a model can reproduce one feature while missing others.
+
+## Part E. From discrepancies to a conclusion (65--75 minutes)
+
+14. Write a 120--180 word conclusion stating the feature each check examines, what the observed-versus-replicated comparisons show, and one targeted model revision. You do not need to fit the revision. Distinguish your findings from a claim about physical causes.
+
+15. Explain why running MCMC longer does not automatically fix a failed predictive check. If no replicate exceeds an observed statistic, report "0 of 2,000 replicates" rather than claiming its probability is exactly zero. These diagnostic fractions are not posterior probabilities that a model is true.
+
+**Optional extension.** Replace the common log rate by six independent log rates $\eta_g\sim\operatorname{Normal}(\log20,1)$. Use the same sampler separately within each group. For one replicate, draw six posterior log rates and use each rate for its original nine observations. Check both the group gap and within-group dispersion. Does resolving group mean differences resolve every problem?
+
+**Source.** R `datasets::warpbreaks`, Tippett (1950), *Technological Applications of Statistics*, p. 106. <https://stat.ethz.ch/R-manual/R-devel/library/datasets/html/warpbreaks.html>.
