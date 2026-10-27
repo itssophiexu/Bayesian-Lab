@@ -150,9 +150,7 @@ head(Yrep[, 1], 10)
 
 `Yrep`: matrix, with dimension 2000x54. It is all replicated experiments stacked, where the rows are datasets and the columns are looms. It is a Monte Carlo sample from the joint posterior predictive distribution.
 
-10. Display the observed histogram and five randomly chosen replicated histograms in a 2-by-3 layout,
-    using common axes and bins. What repeated patterns do you see? Which differences seem
-    systematic rather than ordinary differences between random datasets?
+10. Display the observed histogram and five randomly chosen replicated histograms in a 2-by-3 layout, using common axes and bins. What repeated patterns do you see? Which differences seem systematic rather than ordinary differences between random datasets?
 
 ```{r lab-six-dataset-display, eval=FALSE}
 # SUPPLIED display helper. Run AFTER filling Yrep.
@@ -238,5 +236,24 @@ check_plot <- function(observed,replicated,title) {
 }
 check_plot(observed_spread,replicated_spread,"Spread")
 check_plot(observed_group,replicated_group,"Between-group")
+```
+
+For the spread, the replicated ratios cluster around 1. The observed value 6.19 is very far right, and none of the 2000 replicates reached that since their 95% range was \[0.65, 1.40\].
+
+For the between-group differences, the observed is at 25.77, yet the 95% range for the replicated is \[1.89, 7.78\]. This observed value is still far beyond every replicated value, so none of them satisfy.
+
+```{r}
 check_plot(mean(y),apply(Yrep,1,mean),"Mean check")
 ```
+
+For the mean, however, the observed mean 28.15 is in the middle of the replicated means. This makes sense, since the model was fit to these data, so the posterior is centered at the observed mean, with central 95% being \[26.24, 30.26\]. Here, 49% satisfy $T(\mathbf y^{\mathrm{rep}})\ge T(\mathbf y)$, because the posterior rate is fit to match the overall level of the data, so the mean says almost nothing about fit, unlike the dispersion and group-range checks, which both fail badly. The model reproduces the one feature its parameter controls, but its assumptions fix the spread (variance = mean ≈ 28) and force every group to share the same rate.
+
+## Part E. From discrepancies to a conclusion
+
+14. Write a 120--180 word conclusion stating the feature each check examines, what the observed-versus-replicated comparisons show, and one targeted model revision. You do not need to fit the revision. Distinguish your findings from a claim about physical causes.
+
+The three checks each looked at a different feature of the common-rate Poisson model. The mean check looks at the overall level of breaks. The observed mean (28.15) sits in the middle of the replicated means, which is expected because the single rate is fit to match it. The dispersion ratio \$s\^2/\\bar y\$ tests the Poisson assumption that variance equals the mean. The observed ratio (6.19) lies far above every replicated value (95% range 0.65–1.43), so the counts are much more variable than the model allows. The range of group means tests the assumption that all six wool × tension groups share one rate. The observed range (25.8) is larger than every replicated value (95% range 1.8–7.7), so the groups differ systematically. One targeted revision is to give each wool × tension group its own rate, for example \$\\log \\lambda_g = \\eta_g\$, and to switch to a negative binomial model if extra within-group variability remains. These results show only that the common-rate model fails to reproduce the data’s patterns. They do not show that wool or tension physically causes breakage, because unmeasured differences between looms or yarn could produce the same patterns.
+
+15. Explain why running MCMC longer does not automatically fix a failed predictive check. If no replicate exceeds an observed statistic, report "0 of 2,000 replicates" rather than claiming its probability is exactly zero. These diagnostic fractions are not posterior probabilities that a model is true.
+
+Running MCMC longer only makes the posterior draws more precise under the same common-rate Poisson model, so every replicate still has variance ≈ mean ≈ 28 and nearly equal group means; the check fails because of the model’s assumptions, not because there were too few draws. For both chosen statistics, 0 of 2,000 replicates reached the observed value (6.19 for the dispersion ratio, 25.8 for the group-mean range), which suggests a tail probability below about 1/2000 = 0.0005 rather than a probability of exactly zero. These fractions measure how often the model reproduces a feature as extreme as the observed one, assuming the model is true, so they are not posterior probabilities that the model is true or false.
