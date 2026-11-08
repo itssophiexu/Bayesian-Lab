@@ -1,0 +1,221 @@
+---
+title: "HW7: Hierarchical Normal Models and Gibbs Sampling"
+author: Sophie Xu
+format: pdf
+execute:
+  echo: true
+---
+
+## 1. Data and Model
+
+\(a\)
+
+```{r 1a}
+
+radon <- read.csv("radon_basement_mn.csv")
+nj <- table(radon$county)
+J <- length(nj)
+N <- nrow(radon)
+c(J = J, N = N, min_nj = min(nj), max_nj = max(nj))
+hist(radon$log_radon, breaks = 30, main = "Histogram of log radon", 
+     xlab = "log radon (log pCi/L)", col = "gray", border = "white")
+```
+
+The smallest county sample size is 1, and the largest is 100.
+
+A Normal model is more plausible on this log scale than on the raw concentration scale because the raw radon is right-skewed and the log can compress the long right tail. Also, the gaps in the raw scale grow additively, such that 4 - 8 is 4 pCi/L higher, while on the log scale it is seen as multiplicative, which is double. The symmetric and constant-variance model works better after logging.
+
+\(b\)
+
+$\theta_j$: the true mean log radon for county j. Each county has its own $\theta_j$.
+
+$\mu$: the center of the distribution of county means, aka typical county's mean.
+
+$\sigma$: the standard deviation *within* county.
+
+$\tau$: the standard deviation *between* county.
+
+If $\tau$ were close to 0, it means that counties generally have the same mean, such that $\theta_1 \approx \theta_2 \approx ... \approx \mu$. Then we can treat all homes as one sample, instead of pooling by county.
+
+$\mu$ describes the center of the distribution of county means, not a randomly chosen home.
+
+{{< pagebreak >}}
+
+## 3. Complete and assess the sampler
+
+\(a\) This sampler needs no acceptance step because it draws each parameter directly from its exact full conditional. Every draw is accepted, so not accept/reject decision is needed.
+
+```{r}
+#| echo: false
+#| output: false
+if (!requireNamespace("coda", quietly=TRUE)) stop("Install coda: install.packages('coda')")
+z <- read.csv("radon_basement_mn.csv", stringsAsFactors=FALSE)
+y <- z$log_radon
+county <- sort(unique(z$county)); g <- match(z$county, county)
+J <- length(county); N <- length(y)
+nj <- tabulate(g, nbins=J)
+ybar <- as.numeric(tapply(y, factor(g, levels=seq_len(J)), mean))
+stopifnot(N==766, J==85, all(nj>0), all(is.finite(y)))
+print(range(nj)); print(c(MURRAY=nj[match("MURRAY",county)], ST_LOUIS=nj[match("ST LOUIS",county)]))
+hist(y, breaks=25, xlab="Natural log radon (concentration in pCi/L)", main="Basement measurements")
+
+gibbs <- function(init, iter=10000, burn=2000, tau_scale=0.25) {
+  mu <- init[1]; sigma2 <- init[2]; tau2 <- init[3]
+  theta <- ybar
+  out <- matrix(NA_real_, iter-burn, J+3)
+  colnames(out) <- c("mu", "sigma2", "tau2", county)
+  for (s in seq_len(iter)) {
+    Vtheta <- 1/(nj/sigma2 + 1/tau2)
+    mtheta <- Vtheta*(nj*ybar/sigma2 + mu/tau2)
+    theta <- rnorm(J, mean=mtheta, sd=sqrt(Vtheta))
+    Vmu <- 1/(J/tau2 + 1/2.25)
+    mmu <- Vmu*(sum(theta)/tau2 + 1/2.25)
+    mu <- rnorm(1, mmu, sqrt(Vmu))
+    sigma2 <- 1/rgamma(1, shape=2+N/2,
+                       rate=1+sum((y-theta[g])^2)/2)
+    tau2 <- 1/rgamma(1, shape=2+J/2, rate=tau_scale+sum((theta-mu)^2)/2)
+    if (s>burn) out[s-burn,] <- c(mu, sigma2, tau2, theta)
+  }
+  out
+}
+```
+
+\(b\)
+
+```{r}
+set.seed(4021801)
+initial <- list(c(0,0.3,0.04), c(1,1,0.25), c(2,2,1), c(3,4,2))
+chains <- lapply(initial, gibbs)
+ml <- do.call(coda::mcmc.list, lapply(chains, coda::mcmc))
+ess <- coda::effectiveSize(ml)
+split <- unlist(lapply(chains, function(a) {
+  h <- nrow(a)%/%2
+  list(coda::mcmc(a[1:h,]), coda::mcmc(a[(h+1):(2*h),]))
+}), recursive=FALSE)
+rhat <- coda::gelman.diag(do.call(coda::mcmc.list,split),
+                         autoburnin=FALSE, multivariate=FALSE)$psrf[,1]
+print(cbind(ESS=ess[1:3], split_Rhat=rhat[1:3]))
+par(mfrow=c(3,2), mar=c(3,3.5,2,1))
+cols <- c("#143D59", "#168A8A", "#C16B31", "#687787")
+for (v in c("mu","sigma2","tau2")) {
+  matplot(sapply(chains,function(x)x[1:500,v]), type="l", lty=1,
+          col=cols, xlab="Retained sweep", ylab=v)
+  acf(chains[[1]][,v], main=paste("ACF:",v))
+}
+par(mfrow=c(1,1))
+```
+
+The effective sample sizes are 10,632 for $\mu$, 24,876 for $\sigma^2$, and 7,314 for $\tau^2$, and split $\hat R = 1.00$ for all three. Since the chains agree and every ESS is in the thousands, there is no evidence of convergence or mixing problems, and the four chains can be pooled. $\tau^2$ mixes slowest because it and the $\theta_j$’s are updated from each other’s current values, which makes successive draws dependent.
+
+An effective sample size can be smaller than the number of retained sweeps because Gibbs draws form a Markov chain. Each draw is generated from the previous one, so consecutive draws are positively correlated and partly repeat the same information.
+
+\(c\)
+
+```{r}
+draws <- do.call(rbind,chains); S <- nrow(draws)
+Theta <- draws[,county,drop=FALSE]
+mu <- draws[,"mu"]; sigma2 <- draws[,"sigma2"]; tau2 <- draws[,"tau2"]
+summary_draw <- function(x) c(mean=mean(x), q025=unname(quantile(x,.025)),
+                              q975=unname(quantile(x,.975)))
+print(rbind(mu=summary_draw(mu),sigma=summary_draw(sqrt(sigma2)),
+            tau=summary_draw(sqrt(tau2))))
+```
+
+## 4. What does Partial Pooling Change?
+
+```{r}
+plot(ybar,colMeans(Theta), pch=16, cex=.6+sqrt(nj)/8,
+     xlab="Raw county mean log radon", ylab="Posterior mean county log radon")
+abline(0,1,col="gray50",lty=2); abline(h=mean(mu),col="#168A8A",lwd=2)
+legend("topleft",c("No-pooling reference", "Posterior mean of mu"),
+       lty=c(2,1),col=c("gray50","#168A8A"),bty="n",cex=.8)
+sel <- c("MURRAY","ST LOUIS")
+idx <- match(sel, county)
+tab <- t(sapply(sel, function(cty) summary_draw(Theta[,cty])))
+w <- sapply(idx, function(j) mean(nj[j]*tau2/(nj[j]*tau2+sigma2)))
+round(cbind(nj=nj[idx], ybar=ybar[idx], tab, w=w), 3)
+```
+
+MURRAY is pooled heavily: its estimate moves 0.81 from $\bar y_j$ toward $\mu$, while ST LOUIS moves only 0.02. MURRAY is also far more uncertain, with an interval about five times as wide (1.31 vs. 0.27). This follows from our expression for $w_j = \frac{n_j\tau^2}{n_j\tau^2+\sigma^2}$: with only one home, the data precision is small relative to the prior precision, so $w_j \approx 0.21$ and the estimate relies mostly on $\mu$. With 100 homes, $w_j \approx 0.96$, so the estimate stays close to the county’s own mean.
+
+\(b\)
+
+```{r}
+round(rbind(median_conc=summary_draw(exp(Theta[,"MURRAY"])),
+            mean_conc=summary_draw(exp(Theta[,"MURRAY"]+sigma2/2)),
+            exp_of_mean_theta=exp(mean(Theta[,"MURRAY"]))), 3)
+```
+
+For MURRAY, the posterior mean of the county median concentration $e^{\theta_j}$ is 5.67 pCi/L, with 95% credible interval (2.83, 10.44).
+
+This is not the posterior mean of $\theta_j$ (1.679), which is on the log scale. It also isn’t simply $e^{1.679} = 5.36$: since $e^x$ is convex, the average of $e^{\theta_j}$ over the draws is larger than $e$ raised to the average $\theta_j$ (Jensen’s inequality). It is also not the arithmetic mean concentration of homes. $e^{\theta_j}$ is the median of the lognormal distribution of home concentrations, while the mean is $e^{\theta_j + \sigma^2/2}$, which is larger because a few very high homes pull the mean up.
+
+## 5. Predicting a home, rather than a county median
+
+\(a\)
+
+```{r}
+mean(exp(Theta[,"MURRAY"]) > 4)
+```
+
+$\Pr(e^{\theta_j} > 4 \mid y) \approx 0.813$.
+
+\(b\)
+
+```{r}
+new_home <- exp(rnorm(S, mean=Theta[,"MURRAY"], sd=sqrt(sigma2)))
+round(c(q025=unname(quantile(new_home,.025)), 
+        q975=unname(quantile(new_home,.975)),
+        prob_gt4=mean(new_home > 4)), 3)
+```
+
+For a new MURRAY home, the 95% predictive interval is (1.17, 24.65) pCi/L and $\Pr(r_{\text{new},j} > 4 \mid y) \approx 0.65$. This interval is much wider than the county median’s (2.83, 10.44), because a single home adds within-county variation $\sigma^2$ on top of the uncertainty in $\theta_j$. The probability is lower than the county median’s 0.813: the median is likely above 4, but individual homes spread widely around it, so a given home has a greater chance of falling below 4.
+
+## 6. Check the model and state a conclusion
+
+\(a\)
+
+```{r}
+set.seed(4021802)
+selected <- sample.int(S, 2000)
+Yrep <- matrix(NA_real_, length(selected), N)
+for (s in seq_along(selected)) {
+  k <- selected[s]
+  Yrep[s,] <- rnorm(N, mean=Theta[k, g], sd=sqrt(sigma2[k]))
+}
+dim(Yrep)
+```
+
+`Yrep`: a $2000 \times 766$ matrix of replicated log radon measurements: one row per selected posterior state, one column per home.
+
+`Yrep[s, ]`: one full replicated dataset of 766 log measurements, generated from posterior state `selected[s]` with the same counties and sample sizes as the real data.
+
+`Yrep[, i]`: the 2,000 replicated values for home $i$, which form the posterior predictive distribution of a measurement in that home’s county.
+
+\(b\)
+
+```{r}
+Tmin <- apply(Yrep, 1, min)
+Tobs <- min(y)
+hist(Tmin, breaks=40, xlim=range(c(Tmin, Tobs)), col="gray", border="white",
+     xlab="Minimum log radon", main="Replicated vs. observed minimum")
+abline(v=Tobs, col="#C16B31", lwd=2)
+legend("topright", "Observed minimum", col="#C16B31", lwd=2, bty="n", cex=.8)
+round(c(T_obs=Tobs, q025=unname(quantile(Tmin,.025)), 
+        q975=unname(quantile(Tmin,.975)),
+        frac_le=mean(Tmin <= Tobs)), 3)
+```
+
+The observed minimum is $T(y) = -2.303$ (about $e^{-2.303} = 0.1$ pCi/L). The central 95% range of the replicated minima is $(-1.761, -0.661)$, and the fraction with $T(y^{\text{rep}}) \le T(y)$ is 0.000: none of the 2,000 replicated datasets has a minimum as low as the observed one.
+
+This examines the lower tail of the Normal model for log radon within counties. The model does not produce values as low as the lowest observed measurement, so the Normal lower tail appears too light. This fraction measures how unusual the observed minimum is under the fitted model, not the probability that the model is true.
+
+\(c\)
+
+Pooling lets counties with few measurements borrow strength from the rest of the state. MURRAY, with one home, was pulled about 79% of the way toward $\mu$, while ST LOUIS, with 100 homes, stayed near its own mean, giving more stable estimates for small counties.
+
+Uncertainty for a new home is much larger than for the county median: for MURRAY, the 95% interval for a new home was (1.17, 24.65) pCi/L versus (2.83, 10.44) for the median, because a single home adds within-county variation $\sigma^2$ on top of uncertainty in $\theta_j$.
+
+One limitation is the lower tail. No replicated dataset produced a minimum as low as the observed $-2.303$, so the Normal model for log radon understates how low measurements can go. These are also historical survey data, so they cannot establish present-day radon levels.
+
+A relevant revision would replace the Normal within-county model with a heavier-tailed Student - $t$ distribution, $y_{ij} \mid \theta_j, \sigma^2, \nu \sim t_\nu(\theta_j, \sigma^2)$, to better accommodate extreme low values.
