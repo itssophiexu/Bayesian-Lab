@@ -15,7 +15,7 @@ ridge_gibbs <- function(X, y, v, n_iter = 3000L, burn = 1000L,
   G <- crossprod(Z)
   h <- drop(crossprod(Z, y))
 
-  P <- NA_real_ # TODO 1 of 5: coefficient prior precision matrix (q by q)
+  P <- diag(c(0, rep(1 / v, p)))
   require_completed(P, "prior precision")
   stopifnot(is.matrix(P), all(dim(P) == c(q, q)))
 
@@ -27,15 +27,15 @@ ridge_gibbs <- function(X, y, v, n_iter = 3000L, burn = 1000L,
   sigma2_trace[1] <- s2
   colnames(theta_trace) <- colnames(Z)
   for (iteration in seq_len(n_iter)) {
-    A <- NA_real_ # TODO 2 of 5: conditional coefficient precision matrix
-    h_cond <- NA_real_ # TODO 3 of 5: conditional precision times conditional mean
+    A <- G / s2 + P
+    h_cond <- h / s2
     require_completed(A, "conditional precision")
     require_completed(h_cond, "conditional mean numerator")
     stopifnot(is.matrix(A), all(dim(A) == c(q, q)), length(h_cond) == q)
     theta <- draw_from_precision(A, h_cond)
     rss <- sum((y - drop(Z %*% theta))^2)
-    shape <- NA_real_ # TODO 4 of 5: inverse-gamma conditional shape
-    rate <- NA_real_ # TODO 5 of 5: inverse-gamma conditional scale / gamma rate
+    shape <- a0 + n / 2
+    rate <- b0 + rss / 2
     require_completed(shape, "variance shape")
     require_completed(rate, "variance rate")
     stopifnot(length(shape) == 1L, shape > 0, length(rate) == 1L, rate > 0)
