@@ -12,7 +12,7 @@ execute:
 
 3.  Run the supplied MCMC section. Inspect traces for all chains and an autocorrelation plot. Do they appear to explore the same region?
 
-```{r lab-mcmc, eval=FALSE}
+```{r lab-mcmc}
 # STA 402: NONCONJUGATE Poisson model, Normal prior on log rate eta.
 # Students complete posterior-predictive generation and statistic choices.
 # Run sections in order. Base R only. No package installation required.
@@ -63,7 +63,7 @@ print(quantile(exp(eta_draws),c(.025,.5,.975)))
 
 4.  Choose one retained index $s$, set $\eta^{(s)}=\texttt{eta\_draws[s]}$, and calculate $\lambda^{(s)}=e^{\eta^{(s)}}$. Write down this rate.
 
-```{r lab-one-rate, eval=FALSE}
+```{r lab-one-rate}
 # Part B. TODO 1: select ONE retained eta and generate ONE full dataset.
 s <- 1
 eta_one <- eta_draws[s]
@@ -74,7 +74,7 @@ lambda_one
 
 5.  Generate *54* independent Poisson counts using that one rate. Store the resulting vector as `yrep_one`. Verify its length. Draw a histogram beside the histogram of the observed counts, using the same bins and axes. The two datasets need not match observation by observation.
 
-```{r lab-one-dataset, eval=FALSE}
+```{r lab-one-dataset}
 yrep_one <- rpois(n, lambda_one)
 stopifnot(length(yrep_one) == n)
 length(yrep_one)
@@ -95,7 +95,7 @@ par(mfrow = c(1, 1))
 
 6.  Generate a second complete dataset using the *same* rate. Explain why it differs from the first. Then use another retained parameter draw to generate a third dataset. Identify the two sources of variation involved in these operations.
 
-```{r lab-additional-datasets, eval=FALSE}
+```{r lab-additional-datasets}
 yrep_two <- rpois(n, lambda_one)
 
 s2 <- 40000
@@ -121,7 +121,7 @@ Use $S=2000$ randomly selected retained indices, as provided in the starter. Sel
 
 8.  Fill a matrix `Yrep` using a loop. For row $s$, select its single log-rate draw, exponentiate it, and generate all 54 counts using that rate. Do not use 54 unrelated rates within a row.
 
-```{r lab-replicate-loop, eval=FALSE}
+```{r lab-replicate-loop}
 # Part C. TODO 2: generate S COMPLETE datasets yourself.
 S <- 2000L
 selected_indices <- sample.int(length(eta_draws), S, replace = FALSE)
@@ -152,7 +152,7 @@ head(Yrep[, 1], 10)
 
 10. Display the observed histogram and five randomly chosen replicated histograms in a 2-by-3 layout, using common axes and bins. What repeated patterns do you see? Which differences seem systematic rather than ordinary differences between random datasets?
 
-```{r lab-six-dataset-display, eval=FALSE}
+```{r lab-six-dataset-display}
 # SUPPLIED display helper. Run AFTER filling Yrep.
 show_six <- function(y,Yrep) {
  chosen<-sample.int(nrow(Yrep),5)
@@ -191,7 +191,7 @@ I choose spread and between-group differences. For spread, I assume that the var
 
 11. Write one R function for each statistic. Apply the *same function* to the observed vector and separately to every row of `Yrep`. Explain why applying it to columns would answer a different question.
 
-```{r lab-statistics, eval=FALSE}
+```{r lab-statistics}
 # Part D. TODO 3: write TWO scalar-valued discrepancy functions.
 # Each function must take ONE complete dataset vector of length 54.
 T_spread <- function(z) {
@@ -221,7 +221,7 @@ I looked at rows, not columns, because each row of Yrep is one complete replicat
 
 12. For each statistic, plot its 2,000 replicated values and add a vertical line at its observed value. Include the observed line in your plotting range. Report the observed value, the central 95% replicated range, and the fraction satisfying $T(\mathbf y^{\mathrm{rep}})\ge T(\mathbf y)$.
 
-```{r lab-check-plots, eval=FALSE}
+```{r lab-check-plots}
 # SUPPLIED display and numeric-summary helper.
 check_plot <- function(observed,replicated,title) {
  stopifnot(length(observed)==1,all(is.finite(replicated)))
@@ -234,6 +234,7 @@ check_plot <- function(observed,replicated,title) {
    exceedances=sum(replicated>=observed),
    total=length(replicated),tail=mean(replicated>=observed))
 }
+
 check_plot(observed_spread,replicated_spread,"Spread")
 check_plot(observed_group,replicated_group,"Between-group")
 ```
@@ -242,7 +243,7 @@ For the spread, the replicated ratios cluster around 1. The observed value 6.19 
 
 For the between-group differences, the observed is at 25.77, yet the 95% range for the replicated is \[1.89, 7.78\]. This observed value is still far beyond every replicated value, so none of them satisfy.
 
-```{r}
+```{r lab-check-plots2}
 check_plot(mean(y),apply(Yrep,1,mean),"Mean check")
 ```
 
