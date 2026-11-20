@@ -1,0 +1,194 @@
+---
+title: "Lab 10: R lab on NFL field goal accuracy"
+author: Sophie Xu
+format: pdf
+execute:
+  echo: false
+  output: true
+---
+
+# A. Inspect the data
+
+1\.
+
+```{r}
+# 1. Read and inspect the observed counts.
+counts <- read.csv("nfl_2026_field_goals.csv")
+band_score <- c("30-39" = -1, "40-49" = 0, "50-59" = 1)
+stopifnot(
+  all(counts$distance_band %in% names(band_score)),
+  all(counts$attempts >= counts$made & counts$made >= 0),
+  !anyDuplicated(counts[c("kicker", "distance_band")])
+)
+counts <- counts[counts$attempts > 0, ]
+kicker_names <- sort(unique(counts$kicker))
+focus <- c("Jake Bates", "Spencer Shrader")
+band_totals <- aggregate(cbind(made, attempts) ~ distance_band, counts, sum)
+band_totals$raw_rate <- with(band_totals, made / attempts)
+long_counts <- counts[counts$distance_band == "50-59", c("kicker", "made", "attempts")]
+long_counts$raw_rate <- with(long_counts, made / attempts)
+print(band_totals, row.names = FALSE)
+print(long_counts[match(focus, long_counts$kicker), ], row.names = FALSE)
+```
+
+The raw make fractions are 0.962, 0.838, and 0.752 for 30-39 yards, 40-49 yards, and 50-59 yards, respectively. This makes sense since accuracy drops with longer distance. At 50–59 yards, Bates made 1 of 1 and Shrader made 9 of 10 (0.90). On its own, Bates’s single attempt says almost nothing about his true long-range rate. Shrader’s ten attempts say more but are still a small sample.
+
+# B. Implement the Gibbs Sampler
+
+2\.
+
+```{r}
+# 2. Expand each kicker-by-band cell to binary observations.
+cell <- rep(seq_len(nrow(counts)), counts$attempts)
+kicks <- data.frame(
+  kicker = counts$kicker[cell],
+  group = match(counts$kicker[cell], kicker_names),
+  x = unname(band_score[counts$distance_band[cell]]),
+  y = as.integer(sequence(counts$attempts) <= counts$made[cell])
+)
+stopifnot(nrow(kicks) == sum(counts$attempts), sum(kicks$y) == sum(counts$made))
+```
+
+```{r}
+# 3. Gibbs sampler.
+draw_latent <- function(eta, y) {
+  sign_y <- 2 * y - 1
+  signed_eta <- sign_y * eta
+  log_tail <- log(runif(length(y))) + pnorm(signed_eta, log.p = TRUE)
+
+  # TODO 1:
+  centered <- qnorm(log_tail, lower.tail = FALSE, log.p = TRUE)
+  z <- sign_y * (signed_eta + centered)
+  stopifnot(all(is.finite(z)), all(sign_y * z > 0))
+  z
+}
+
+gibbs_probit <- function(b, seed, mu_start, beta_start, tau2_start,
+                         iterations = 4000L, burn = 1000L) {
+  stopifnot(iterations > burn, burn >= 0, b > 0, tau2_start > 0)
+  set.seed(seed)
+  g <- kicks$group
+  x <- kicks$x
+  y <- kicks$y
+  J <- length(kicker_names)
+  n_j <- tabulate(g, nbins = J)
+  mu <- mu_start
+  beta <- beta_start
+  tau2 <- tau2_start
+  alpha <- rep(mu, J)
+  draws <- matrix(NA_real_, nrow = iterations - burn, ncol = J + 3L,
+                  dimnames = list(NULL, c("mu", "beta", "tau2", kicker_names)))
+
+  for (iteration in seq_len(iterations)) {
+    z <- draw_latent(alpha[g] + beta * x, y)
+
+    # TODO 2: 
+    sum_by_kicker <- as.numeric(rowsum(z - beta * x, g, reorder = TRUE))
+    alpha_var <- 1 / (n_j + 1 / tau2)
+    alpha_mean <- alpha_var * (sum_by_kicker + mu / tau2)
+    alpha <- rnorm(J, mean = alpha_mean, sd = sqrt(alpha_var))
+
+    # TODO 3:
+    beta_var <- 1 / (sum(x^2) + 1)
+    beta_mean <- beta_var * sum(x * (z - alpha[g]))
+    beta <- rnorm(1, mean = beta_mean, sd = sqrt(beta_var))
+
+    mu_var <- 1 / (J / tau2 + 1)
+    mu_mean <- mu_var * (sum(alpha) / tau2 + 1)
+    mu <- rnorm(1, mean = mu_mean, sd = sqrt(mu_var))
+
+    # TODO 4: 
+    tau_shape <- 3 + J / 2
+    tau_scale <- b + sum((alpha - mu)^2) / 2
+    tau2 <- 1 / rgamma(1, shape = tau_shape, rate = tau_scale)
+
+    if (iteration > burn) {
+      draws[iteration - burn, ] <- c(mu, beta, tau2, alpha)
+    }
+  }
+  draws
+}
+
+fit_prior <- function(b, seed) {
+  list(
+    gibbs_probit(b, seed, mu_start = 0.3, beta_start = 0.5, tau2_start = 0.03),
+    gibbs_probit(b, seed + 1L, mu_start = 1.7, beta_start = -0.5, tau2_start = 0.5)
+  )
+}
+
+plot_traces <- function(chains) {
+  saved_par <- par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+  on.exit(par(saved_par))
+  trace_names <- c("mu", "beta", "tau2", focus[1])
+  trace_labels <- c("mu", "beta", "tau squared", paste("alpha:", focus[1]))
+  for (j in seq_along(trace_names)) {
+    name <- trace_names[j]
+    trace <- cbind(chains[[1]][, name], chains[[2]][, name])
+    matplot(trace, type = "l", lty = 1, col = c("#143D59", "#B45C31"),
+            xlab = "Retained draw", ylab = trace_labels[j])
+    if (j == 1L) {
+      legend("topright", c("Chain 1", "Chain 2"), lty = 1,
+             col = c("#143D59", "#B45C31"), bty = "n")
+    }
+  }
+}
+```
+
+```{r}
+# 4. Summarize 50-59-yard probability draws and predict a 10-attempt count.
+long_probabilities <- function(chains, kicker) {
+  draws <- rbind(chains[[1]], chains[[2]])
+  pnorm(draws[, kicker] + draws[, "beta"])
+}
+
+summarize_long <- function(chains, prior, kicker) {
+  p <- long_probabilities(chains, kicker)
+  interval <- quantile(p, c(0.05, 0.95), names = FALSE)
+  observed <- long_counts[match(kicker, long_counts$kicker), ]
+  data.frame(prior = prior, kicker = kicker, made = observed$made,
+             attempts = observed$attempts, raw_rate = observed$raw_rate,
+             posterior_mean = mean(p), lower_90 = interval[1],
+             upper_90 = interval[2])
+}
+
+predict_ten <- function(chains, prior, kicker) {
+  p <- long_probabilities(chains, kicker)
+  # TODO 5: one Binomial(10, p) count per posterior draw of p
+  makes <- rbinom(length(p), size = 10, prob = p)
+  interval <- quantile(makes, c(0.05, 0.95), names = FALSE, type = 1)
+  data.frame(prior = prior, kicker = kicker, expected_makes = mean(makes),
+             lower_90 = interval[1], upper_90 = interval[2],
+             prob_at_least_7 = mean(makes >= 7))
+}
+```
+
+```{r}
+# 5. Run the analysis.
+fits <- list(strong = fit_prior(b = 0.05, seed = 40201L),
+             weak = fit_prior(b = 0.50, seed = 40203L))
+
+parameter_summary <- do.call(rbind, lapply(names(fits), function(prior) {
+  draws <- rbind(fits[[prior]][[1]], fits[[prior]][[2]])
+  data.frame(prior = prior, median_tau2 = median(draws[, "tau2"]),
+             prob_beta_negative = mean(draws[, "beta"] < 0))
+}))
+probability_summary <- do.call(rbind, lapply(names(fits), function(prior) {
+  do.call(rbind, lapply(focus, function(kicker) {
+    summarize_long(fits[[prior]], prior, kicker)
+  }))
+}))
+set.seed(40205L)
+predictive_summary <- do.call(rbind, lapply(names(fits), function(prior) {
+  do.call(rbind, lapply(focus, function(kicker) {
+    predict_ten(fits[[prior]], prior, kicker)
+  }))
+}))
+print(parameter_summary, digits = 3, row.names = FALSE)
+print(probability_summary, digits = 3, row.names = FALSE)
+print(predictive_summary, digits = 3, row.names = FALSE)
+
+plot_traces(fits$strong)
+plot_traces(fits$weak)
+```
+
+For both priors, the two chains overlap and cover the same ranges for β and τ². β mixes well under both priors; τ² mixes more slowly, especially under the stronger prior. Under the weaker prior, τ² moves more freely, mostly between 0.1 and 0.2. The two τ² medians (0.0195 vs 0.1221) differ by far more than the chain-to-chain variation in the plots, so this looks like a real effect of the prior rather than Monte Carlo noise. A longer run would confirm that, especially for τ² under the strong prior.
